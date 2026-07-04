@@ -15,8 +15,8 @@
 <script>
 'use strict';
 /* =========================================================
-   BUBBLENOMICS v2 〜バブルは、はじける直前がいちばん儲かる〜
-   弾幕回避 × バブル経済 × ローグライトドラフト
+   BUBBLENOMICS v3 〜バブルは、はじける直前がいちばん儲かる〜
+   弾幕回避 × バブル経済 × ローグライトドラフト × 実績
    1ファイル・外部アセットなし
    ========================================================= */
 
@@ -92,6 +92,12 @@ const PERKS = [
     desc:['いますぐ','¥2,000 × 現在倍率 を獲得'],    apply(){ const b = Math.floor(2000 * multOf(B.r)); score += b; popup(B.x, B.y - B.r - 24, '+' + yen(b).slice(1), '#ffe08a', 20); } },
   { id:'heat',   icon:'🌈', name:'相場の熱気',   persistent:false,
     desc:['フィーバーゲージ','+50%'],                apply(){ addFever(0.5); } },
+  { id:'compound', icon:'💹', name:'複利経営',   persistent:true,
+    desc:['毎秒 資産の','+0.4% を自動獲得'],         apply(){ compoundRate += 0.004; } },
+  { id:'greed',  icon:'🔥', name:'火事場の強欲', persistent:true, max:1,
+    desc:['膨張率85%以上のとき','資産レート2倍'],    apply(){ greedFire = true; } },
+  { id:'ghost',  icon:'👻', name:'不死鳥の残り香', persistent:true, max:1,
+    desc:['保険発動時に','フィーバー+50%'],          apply(){ ghostPerk = true; } },
 ];
 
 /* ---------- 市場イベント ---------- */
@@ -100,6 +106,62 @@ const EVENTS = [
   { id:'easing',     icon:'🌀', name:'金融緩和',   dur:8, msg:'🌀 金融緩和！インフレ加速＆資産1.5倍！' },
   { id:'regulation', icon:'🧯', name:'空売り規制', dur:8, msg:'🧯 空売り規制！トゲの動きが鈍る！' },
 ];
+
+/* ---------- ニュースティッカー ---------- */
+const NEWS_POOL = [
+  '専門家「今回は違う」', '主婦もJKも風船買いに殺到', '靴磨きの少年、相場を語り始める',
+  '風船銀行、金利据え置きを決定', 'アナリスト予想、今年も全員ハズレ', '猫も杓子もバブルに乗車',
+  '匿名掲示板「まだ上がる」', 'サボテン農家、今年も豊作', 'ベア派閥がSNSで強気を挑発',
+  '風船保険の加入者が急増', '格付け会社、とりあえず全部AAAに', '有識者「風船は実需」',
+  '空に浮かぶものは全て買いだと話題に', '桐箱入りサボテン、高値で落札',
+];
+let tickerStr = '', tickerW = 0, tickerX = 0, pendingNews = [];
+function pushNews(t){ if (pendingNews.length < 8) pendingNews.push(t); }
+function rebuildTicker(){
+  const items = pendingNews.splice(0, 4);
+  while (items.length < 4) items.push(NEWS_POOL[RI(0, NEWS_POOL.length - 1)]);
+  tickerStr = items.join('　◆　');
+  ctx.font = F(12, '600');
+  tickerW = ctx.measureText(tickerStr).width;
+}
+function updateTicker(rdt){
+  if (!tickerStr){ rebuildTicker(); tickerX = W; }
+  tickerX -= 70 * rdt;
+  if (tickerX < -tickerW){ rebuildTicker(); tickerX = W; }
+}
+
+/* ---------- 実績 ---------- */
+const ACHS = [
+  { id:'pop1',     icon:'💥', name:'はじめてのバブル' },
+  { id:'graze10',  icon:'✨', name:'命知らず' },
+  { id:'combo5',   icon:'🎯', name:'スレスレの美学' },
+  { id:'fever1',   icon:'🌈', name:'フィーバー入門' },
+  { id:'bear1',    icon:'🐻', name:'ベア退治' },
+  { id:'bear3',    icon:'🏹', name:'熊撃ちの名手' },
+  { id:'mult30',   icon:'🎈', name:'膨張の限界' },
+  { id:'q8',       icon:'🗓️', name:'第8四半期の生還者' },
+  { id:'rich100k', icon:'💰', name:'十万長者' },
+  { id:'rich1m',   icon:'👑', name:'ミリオネア' },
+  { id:'insured',  icon:'🛡️', name:'保険は正義' },
+  { id:'overheat', icon:'🔥', name:'強欲の代償' },
+  { id:'wind10',   icon:'💨', name:'風使い' },
+  { id:'gem1',     icon:'💎', name:'ダイヤの輝き' },
+];
+let achUnlocked = {};
+try { achUnlocked = JSON.parse(localStorage.getItem('bubblenomics_ach') || '{}') || {}; } catch(e){ achUnlocked = {}; }
+let achToasts = [], runUnlocks = [];
+function unlock(id){
+  if (achUnlocked[id]) return;
+  achUnlocked[id] = true;
+  try { localStorage.setItem('bubblenomics_ach', JSON.stringify(achUnlocked)); } catch(e){}
+  const a = ACHS.find(x => x.id === id);
+  if (a){ achToasts.push({ txt: `${a.icon} 実績解除「${a.name}」`, t: 0 }); runUnlocks.push(a); sndCoin(); }
+}
+
+/* ---------- 生涯統計 ---------- */
+let lifeStats = { plays: 0, earned: 0, bears: 0 };
+try { const _s = JSON.parse(localStorage.getItem('bubblenomics_stats') || 'null'); if (_s && typeof _s.plays === 'number') lifeStats = _s; } catch(e){}
+function saveStats(){ try { localStorage.setItem('bubblenomics_stats', JSON.stringify(lifeStats)); } catch(e){} }
 
 function rankOf(s){
   if (s <   8000) return ['🌱 養分', '#9fb2c8'];
@@ -120,7 +182,12 @@ let shake = 0, dyingT = 0, overT = 0, bannerTxt = '', bannerT = 0, slowT = 0;
 let deathReason = '', ignoreVent = false, paused = false, muted = false;
 // perk効果
 let grazeBonus = 0, ventEff = 1, coinMul = 1, inflMul = 1, thrustMul = 1, magnetR = 150, barrier = 0;
-let perkCounts = {}, invulnT = 0;
+let compoundRate = 0, greedFire = false, ghostPerk = false;
+let perkCounts = {}, invulnT = 0, windBlown = 0, achCheckT = 0, recordFxDone = false;
+// 新ハザード
+let vortices = [], lasers = [];
+// フィーバーBGM
+let feverBeatT = 0, feverNoteI = 0;
 // フィーバー
 let fever = 0, feverOn = false, feverT = 0, feverCount = 0;
 // ボス・イベント・ドラフト
@@ -245,12 +312,15 @@ function startGame(){
   spawnT = 2.5; coinT = 2.0; lastWallT = -99; criticalT = 0; slowT = 0;
   shake = 0; bannerT = 0; tipIdx = 0; wasRecord = false;
   grazeBonus = 0; ventEff = 1; coinMul = 1; inflMul = 1; thrustMul = 1; magnetR = 150; barrier = 0;
-  perkCounts = {}; invulnT = 0;
+  compoundRate = 0; greedFire = false; ghostPerk = false;
+  perkCounts = {}; invulnT = 0; windBlown = 0; achCheckT = 0; recordFxDone = false;
   fever = 0; feverOn = false; feverT = 0; feverCount = 0;
   boss = null; bossCount = 0; bearKills = 0; pendingBoss = false;
   mkt = null; mktT = 16; draft = null;
+  runUnlocks = []; tickerStr = ''; pendingNews = [];
   B.x = W / 2; B.y = H / 2; B.vx = 0; B.vy = 0; B.r = START_R;
   needles = []; bombs = []; coins = []; parts = []; rings = []; popups = [];
+  vortices = []; lasers = [];
 }
 function hitHazard(reason){
   if (invulnT > 0) return;
@@ -259,6 +329,8 @@ function hitHazard(reason){
     invulnT = 1.3;
     shake = Math.max(shake, 14);
     sndShield();
+    unlock('insured');
+    if (ghostPerk) addFever(0.5);
     popup(B.x, B.y - B.r - 26, '🛡️ 保険発動！', '#6ee7ff', 22);
     rings.push({ x: B.x, y: B.y, r: B.r, vr: 900, t: 0, life: 0.4, c: '#6ee7ff', w: 5 });
     // 衝撃波：近くのトゲ・爆弾を消し飛ばす
@@ -292,6 +364,9 @@ function die(reason){
   if (state !== 'play') return;
   state = 'dying'; dyingT = 0; deathReason = reason;
   shake = 24; sndPop();
+  lifeStats.plays++; lifeStats.earned += Math.floor(score); saveStats();
+  unlock('pop1');
+  if (reason.startsWith('過熱')) unlock('overheat');
   if (score > best) { best = score; wasRecord = true; try { localStorage.setItem('bubblenomics_best', String(Math.floor(best))); } catch(e){} }
   const colors = ['#ff7eb6','#ffd166','#4ecdc4','#ff4d6d','#a06cff','#fff'];
   for (let i = 0; i < 130; i++){
@@ -309,16 +384,19 @@ function addFever(x){
   fever = Math.min(1, fever + x);
   if (fever >= 1){
     feverOn = true; feverT = FEVER_DUR; feverCount++;
+    feverBeatT = 0; feverNoteI = 0;
     bannerTxt = '🌈 バブルフィーバー！！ 資産3倍・配当2倍！';
     bannerT = 3.0;
     sndFever();
+    unlock('fever1');
+    pushNews('市場は完全に過熱、当局は静観');
     rings.push({ x: B.x, y: B.y, r: B.r, vr: 800, t: 0, life: 0.5, c: '#ffd166', w: 6 });
   }
 }
 
 /* ---------- ドラフト（投資戦略） ---------- */
 function openDraft(){
-  const pool = PERKS.filter(p => !(p.id === 'shield' && barrier >= 3));
+  const pool = PERKS.filter(p => !(p.id === 'shield' && barrier >= 3) && !(p.max && (perkCounts[p.id] || 0) >= p.max));
   const opts = [];
   while (opts.length < 3 && pool.length){
     const i = RI(0, pool.length - 1);
@@ -346,9 +424,13 @@ function startBoss(){
   bossCount++;
   const hp = 8 + 5 * (bossCount - 1);
   boss = { x: W / 2, y: -90, t: 0, entering: true, hp, maxHp: hp,
-    atkT: 2.2, burstT: 6.5, life: 42, hitFlash: 0 };
-  bannerTxt = '🐻 決算警報：ベア襲来！逃げながら噴射の風でトゲを当てろ！';
+    atkT: 2.2, burstT: 6.5, life: 42, hitFlash: 0,
+    chargeT: 6, aiming: 0, charging: 0, aimX: 0, aimY: 0 };
+  bannerTxt = bossCount >= 2
+    ? '🐻 ベア再襲来！今度は突進してくるぞ…！'
+    : '🐻 決算警報：ベア襲来！逃げながら噴射の風でトゲを当てろ！';
   bannerT = 3.5;
+  pushNews('速報：ベアが市場に乱入');
   beep(120, 0.5, 'sawtooth', 0.25, -40);
   shake = Math.max(shake, 8);
 }
@@ -356,6 +438,10 @@ function defeatBoss(){
   const bonus = Math.floor(2500 * level + 5000 * bossCount);
   score += bonus;
   bearKills++;
+  lifeStats.bears++; saveStats();
+  unlock('bear1');
+  if (lifeStats.bears >= 3) unlock('bear3');
+  pushNews('速報：ベア、風船の養分になる');
   bannerTxt = `🎉 ベア撃破！ボーナス ${yen(bonus)}！`;
   bannerT = 3.0;
   popup(boss.x, boss.y, '💥', '#fff', 40);
@@ -391,11 +477,39 @@ function updateBoss(gdt){
     boss = null;
     return;
   }
-  // プレイヤーをじわじわ追う
-  const dx = B.x - b.x, dy = B.y - b.y, d = Math.hypot(dx, dy) || 1;
-  const sp = 34 + bossCount * 8;
-  b.x += dx / d * sp * gdt + Math.cos(b.t * 1.3) * 30 * gdt;
-  b.y += dy / d * sp * gdt * 0.6;
+  // 2体目以降：狙いを定めて突進する
+  if (bossCount >= 2){
+    if (b.charging > 0){
+      b.charging -= gdt;
+      b.x += b.aimX * 640 * gdt;
+      b.y += b.aimY * 640 * gdt;
+      if (Math.random() < 0.5){
+        parts.push({ x: b.x + R(-20, 20), y: b.y + R(-20, 20), vx: -b.aimX * 120, vy: -b.aimY * 120,
+          g: 0, drag: 2.5, rot: 0, vr: 0, sz: R(2, 5), c: 'rgba(255,90,110,0.7)', t: 0, life: 0.4, shape: 'dot' });
+      }
+      if (b.charging <= 0){ b.chargeT = Math.max(4.5, 7 - bossCount); }
+    } else if (b.aiming > 0){
+      b.aiming -= gdt;
+      if (b.aiming <= 0){ b.charging = 0.55; shake = Math.max(shake, 6); beep(70, 0.4, 'sawtooth', 0.3, -20); }
+    } else {
+      b.chargeT -= gdt;
+      if (b.chargeT <= 0){
+        b.aiming = 0.8;
+        const adx = B.x - b.x, ady = B.y - b.y, ad = Math.hypot(adx, ady) || 1;
+        b.aimX = adx / ad; b.aimY = ady / ad;
+        beep(110, 0.6, 'sawtooth', 0.2, 90);
+      }
+    }
+  }
+  // プレイヤーをじわじわ追う（照準・突進中は停止）
+  if (!(b.aiming > 0) && !(b.charging > 0)){
+    const dx = B.x - b.x, dy = B.y - b.y, d = Math.hypot(dx, dy) || 1;
+    const sp = 34 + bossCount * 8;
+    b.x += dx / d * sp * gdt + Math.cos(b.t * 1.3) * 30 * gdt;
+    b.y += dy / d * sp * gdt * 0.6;
+  }
+  b.x = clamp(b.x, -60, W + 60);
+  b.y = clamp(b.y, -60, H + 60);
   // 3方向の爪攻撃
   b.atkT -= gdt;
   if (b.atkT <= 0){
@@ -502,10 +616,26 @@ function spawnWall(){
   }
   popup(fromLeft ? 90 : W - 90, gy, '⚠ 壁！', '#ffd166', 22);
 }
+function spawnVortex(){
+  if (vortices.length >= 1) return;
+  const p = spawnEdgePoint(50);
+  const tx = R(W * 0.25, W * 0.75), ty = R(H * 0.25, H * 0.75);
+  vortices.push({ x: p.x, y: p.y, tx, ty, t: 0, life: 7, R: 250 });
+  popup(tx, ty, '🌀 渦が発生！', '#c8bfff', 20);
+  pushNews('テーパリング観測、市場に渦');
+  beep(220, 0.5, 'sine', 0.15, -120);
+}
+function spawnLaser(){
+  const vertical = Math.random() < 0.5;
+  lasers.push({ vertical, pos: vertical ? B.x : B.y, t: 0, warn: 1.2, fire: 0.5 });
+  popup(vertical ? clamp(B.x, 60, W - 60) : W / 2, vertical ? 60 : clamp(B.y, 40, H - 40), '⚠ 監視ビーム！', '#ff8fa3', 16);
+  beep(980, 0.3, 'sawtooth', 0.1);
+}
 function spawnCoin(){
   const cap = (mkt && mkt.id === 'boom') ? 8 : 4;
   if (coins.length >= cap) return;
-  coins.push({ x: R(W * 0.15, W * 0.85), y: R(H * 0.18, H * 0.82), t: 0, life: 9, ph: R(0, TAU) });
+  const gem = level >= 2 && Math.random() < 0.10;   // 10%で💎（高額・短命）
+  coins.push({ x: R(W * 0.15, W * 0.85), y: R(H * 0.18, H * 0.82), t: 0, life: gem ? 6 : 9, ph: R(0, TAU), gem });
 }
 function spawnWave(){
   if (needles.length > 110) return;
@@ -513,7 +643,9 @@ function spawnWave(){
   if (level >= 2) opts.push(['aimed', 2.2]);
   if (level >= 3) opts.push(['sine', 2]);
   if (level >= 4 && !boss) opts.push(['bomb', 1.3]);
+  if (level >= 5 && !boss) opts.push(['vortex', 0.8]);
   if (level >= 6 && !boss) opts.push(['wall', 1.0]);
+  if (level >= 7) opts.push(['laser', 1.1]);
   let total = 0; for (const o of opts) total += o[1];
   let pick = Math.random() * total, kind = 'drift';
   for (const o of opts){ pick -= o[1]; if (pick <= 0) { kind = o[0]; break; } }
@@ -522,6 +654,8 @@ function spawnWave(){
   else if (kind === 'sine'){ const c = RI(2, 3); for (let i = 0; i < c; i++) spawnSine(); }
   else if (kind === 'bomb') spawnBomb();
   else if (kind === 'wall') spawnWall();
+  else if (kind === 'vortex') spawnVortex();
+  else if (kind === 'laser') spawnLaser();
 }
 function burstBomb(bm){
   const count = Math.min(8 + level, 16);
@@ -553,6 +687,8 @@ function simulate(gdt){
   const newLevel = 1 + Math.floor(elapsed / QUARTER_SEC);
   if (newLevel > level){
     level = newLevel;
+    if (level >= 8) unlock('q8');
+    if (LEVEL_MSG[level]) pushNews(LEVEL_MSG[level]);
     if (level % 4 === 0){
       bannerTxt = `第${level}四半期`;
       pendingBoss = true;
@@ -586,6 +722,7 @@ function simulate(gdt){
       const e = EVENTS[RI(0, EVENTS.length - 1)];
       mkt = { ...e, t: e.dur };
       bannerTxt = e.msg; bannerT = 2.8;
+      pushNews(e.msg.replace(/^[^ ]+ /, ''));
       beep(440, 0.2, 'triangle', 0.2, 200);
     }
   }
@@ -648,9 +785,28 @@ function simulate(gdt){
   // ---- 資産（スコア） ----
   const mult = multOf(B.r);
   maxMult = Math.max(maxMult, mult);
+  const ratioNow = (B.r - MINR) / (MAXR - MINR);
   score += SCORE_RATE * mult * (1 + (level - 1) * 0.18)
          * (feverOn ? 3 : 1)
+         * (greedFire && ratioNow > 0.85 ? 2 : 1)
          * (mkt && mkt.id === 'easing' ? 1.5 : 1) * gdt;
+  if (compoundRate > 0) score += score * compoundRate * gdt;   // 複利経営
+  achCheckT -= gdt;
+  if (achCheckT <= 0){
+    achCheckT = 0.5;
+    if (mult >= 30) unlock('mult30');
+    if (score >= 100000) unlock('rich100k');
+    if (score >= 1000000) unlock('rich1m');
+  }
+  // フィーバーBGM（簡易アルペジオ）
+  if (feverOn){
+    feverBeatT -= gdt;
+    if (feverBeatT <= 0){
+      const notes = [523, 659, 784, 880, 1046, 880, 784, 659];
+      beep(notes[feverNoteI++ % notes.length], 0.12, 'square', 0.055);
+      feverBeatT = 0.14;
+    }
+  }
 
   // ---- ボス ----
   if (boss){
@@ -689,7 +845,11 @@ function simulate(gdt){
       if (wd < WIND_RANGE && wd > 1){
         const dot = (wx / wd) * B.jetDir.x + (wy / wd) * B.jetDir.y;
         if (dot > 0.3){
-          if (!n.blown){ n.blown = true; n.vy = n.vy || 0; }
+          if (!n.blown){
+            n.blown = true; n.vy = n.vy || 0;
+            windBlown++;
+            if (windBlown >= 10) unlock('wind10');
+          }
           n.vx += B.jetDir.x * 1500 * gdt;
           n.vy += B.jetDir.y * 1500 * gdt;
           const s = Math.hypot(n.vx, n.vy);
@@ -748,6 +908,8 @@ function simulate(gdt){
       n.grazed = true;
       grazeCombo++; grazeComboT = 2.0; totalGraze++;
       slowT = 0.1;
+      if (totalGraze >= 10) unlock('graze10');
+      if (grazeCombo >= 5) unlock('combo5');
       addFever(0.1 + Math.min(grazeCombo * 0.02, 0.1));
       const bonus = Math.floor(60 * mult * grazeCombo);
       score += bonus;
@@ -778,6 +940,42 @@ function simulate(gdt){
     if (bm.fuse <= 0){ burstBomb(bm); bombs.splice(i, 1); }
   }
 
+  // ---- テーパリング渦（吸引） ----
+  for (let i = vortices.length - 1; i >= 0; i--){
+    const v = vortices[i];
+    v.t += gdt;
+    if (v.t > v.life){ vortices.splice(i, 1); continue; }
+    const mdx = v.tx - v.x, mdy = v.ty - v.y, md = Math.hypot(mdx, mdy);
+    if (md > 4){ v.x += mdx / md * 70 * gdt; v.y += mdy / md * 70 * gdt; }
+    const dx = v.x - B.x, dy = v.y - B.y, d = Math.hypot(dx, dy);
+    if (d < v.R && d > 1){
+      const f = 300 * (1 - d / v.R);
+      B.vx += dx / d * f * gdt;
+      B.vy += dy / d * f * gdt;
+    }
+    // 渦に吸われる塵の演出
+    if (Math.random() < 0.4){
+      const a = R(0, TAU), rr = R(v.R * 0.4, v.R);
+      parts.push({ x: v.x + Math.cos(a) * rr, y: v.y + Math.sin(a) * rr,
+        vx: -Math.cos(a) * rr * 0.9, vy: -Math.sin(a) * rr * 0.9,
+        g: 0, drag: 0.4, rot: 0, vr: 0, sz: R(1, 2.5), c: 'rgba(200,191,255,0.6)', t: 0, life: 0.8, shape: 'dot' });
+    }
+  }
+
+  // ---- 当局の監視ビーム ----
+  for (let i = lasers.length - 1; i >= 0; i--){
+    const L = lasers[i];
+    L.t += gdt;
+    if (L.t > L.warn + L.fire){ lasers.splice(i, 1); continue; }
+    if (L.t > L.warn && invulnT <= 0){
+      const d = L.vertical ? Math.abs(B.x - L.pos) : Math.abs(B.y - L.pos);
+      if (d < B.r * 0.92 + 12){
+        hitHazard('当局の監視ビームに焼かれてバブル崩壊');
+        if (state !== 'play') return;
+      }
+    }
+  }
+
   // ---- コイン（配当） ----
   for (let i = coins.length - 1; i >= 0; i--){
     const c = coins[i];
@@ -785,15 +983,18 @@ function simulate(gdt){
     const dx = B.x - c.x, dy = B.y - c.y, d = Math.hypot(dx, dy);
     if (d < magnetR && d > 1){ c.x += dx / d * 130 * gdt; c.y += dy / d * 130 * gdt; }
     if (d < B.r + 18){
-      const bonus = Math.floor(400 * mult * coinMul * (feverOn ? 2 : 1));
+      const base = c.gem ? 2000 : 400;
+      const bonus = Math.floor(base * mult * coinMul * (feverOn ? 2 : 1));
       score += bonus;
-      addFever(0.08);
-      popup(c.x, c.y - 10, `+${yen(bonus).slice(1)} 配当💰`, '#ffe08a', 18);
+      addFever(c.gem ? 0.25 : 0.08);
+      if (c.gem){ unlock('gem1'); shake = Math.max(shake, 5); }
+      popup(c.x, c.y - 10, c.gem ? `+${yen(bonus).slice(1)} 時価総額💎` : `+${yen(bonus).slice(1)} 配当💰`, c.gem ? '#9becff' : '#ffe08a', c.gem ? 22 : 18);
       sndCoin();
-      for (let k = 0; k < 10; k++){
-        const a = R(0, TAU), sp = R(40, 180);
+      if (c.gem) beep(1760, 0.25, 'sine', 0.2);
+      for (let k = 0; k < (c.gem ? 18 : 10); k++){
+        const a = R(0, TAU), sp = R(40, c.gem ? 260 : 180);
         parts.push({ x: c.x, y: c.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, g: 240, drag: 1.5,
-          rot: R(0, TAU), vr: R(-6, 6), sz: R(2, 4), c: '#ffd166', t: 0, life: 0.6, shape: 'rect' });
+          rot: R(0, TAU), vr: R(-6, 6), sz: R(2, 4), c: c.gem ? '#9becff' : '#ffd166', t: 0, life: 0.6, shape: 'rect' });
       }
       coins.splice(i, 1); continue;
     }
@@ -890,17 +1091,82 @@ function drawCoin(c){
   ctx.save();
   ctx.translate(c.x, c.y + bobY);
   ctx.globalAlpha = blink;
-  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 30);
-  g.addColorStop(0, 'rgba(255,220,120,0.5)');
-  g.addColorStop(1, 'rgba(255,220,120,0)');
+  const glow = c.gem ? 'rgba(155,236,255,' : 'rgba(255,220,120,';
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, c.gem ? 36 : 30);
+  g.addColorStop(0, glow + (c.gem ? '0.6)' : '0.5)'));
+  g.addColorStop(1, glow + '0)');
   ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(0, 0, 30, 0, TAU); ctx.fill();
-  let sx = Math.sin(c.t * 3.2 + c.ph);
+  ctx.beginPath(); ctx.arc(0, 0, c.gem ? 36 : 30, 0, TAU); ctx.fill();
+  let sx = Math.sin(c.t * (c.gem ? 5 : 3.2) + c.ph);
   sx = Math.sign(sx || 1) * Math.max(Math.abs(sx), 0.18);
   ctx.scale(sx, 1);
-  ctx.font = `28px ${EMOJI}`;
+  ctx.font = `${c.gem ? 26 : 28}px ${EMOJI}`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('🪙', 0, 0);
+  ctx.fillText(c.gem ? '💎' : '🪙', 0, 0);
+  ctx.restore();
+}
+function drawVortex(v){
+  const fadeIn = clamp(v.t / 0.5, 0, 1);
+  const fadeOut = clamp((v.life - v.t) / 1, 0, 1);
+  const a = fadeIn * fadeOut;
+  ctx.save();
+  ctx.translate(v.x, v.y);
+  ctx.rotate(tReal * 3);
+  for (let arm = 0; arm < 3; arm++){
+    ctx.save();
+    ctx.rotate(arm * TAU / 3);
+    ctx.strokeStyle = `rgba(179,157,255,${0.55 * a})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let k = 0; k <= 14; k++){
+      const tt = k / 14;
+      const rr = 14 + tt * v.R * 0.55;
+      const aa = tt * 2.4;
+      const px = Math.cos(aa) * rr, py = Math.sin(aa) * rr;
+      if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = `rgba(179,157,255,${0.35 * a})`;
+  ctx.beginPath(); ctx.arc(0, 0, 10 + Math.sin(tReal * 8) * 3, 0, TAU); ctx.fill();
+  ctx.restore();
+  // 吸引範囲のうっすらリング
+  ctx.strokeStyle = `rgba(179,157,255,${0.12 * a})`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 10]);
+  ctx.beginPath(); ctx.arc(v.x, v.y, v.R, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
+}
+function drawLaser(L){
+  const firing = L.t > L.warn;
+  ctx.save();
+  if (!firing){
+    // 予告線（点滅）
+    const blink = 0.25 + Math.abs(Math.sin(tReal * 14)) * 0.5;
+    const urgency = clamp(L.t / L.warn, 0, 1);
+    ctx.strokeStyle = `rgba(255,90,120,${blink * (0.4 + urgency * 0.6)})`;
+    ctx.lineWidth = 2 + urgency * 2;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    if (L.vertical){ ctx.moveTo(L.pos, -20); ctx.lineTo(L.pos, H + 20); }
+    else { ctx.moveTo(-20, L.pos); ctx.lineTo(W + 20, L.pos); }
+    ctx.stroke();
+  } else {
+    const k = clamp(1 - (L.t - L.warn) / L.fire, 0, 1);
+    const w = 26 * k;
+    let g;
+    if (L.vertical) g = ctx.createLinearGradient(L.pos - w, 0, L.pos + w, 0);
+    else g = ctx.createLinearGradient(0, L.pos - w, 0, L.pos + w);
+    g.addColorStop(0, 'rgba(255,60,90,0)');
+    g.addColorStop(0.35, `rgba(255,80,110,${0.7 * k})`);
+    g.addColorStop(0.5, `rgba(255,240,245,${0.95 * k})`);
+    g.addColorStop(0.65, `rgba(255,80,110,${0.7 * k})`);
+    g.addColorStop(1, 'rgba(255,60,90,0)');
+    ctx.fillStyle = g;
+    if (L.vertical) ctx.fillRect(L.pos - w, -20, w * 2, H + 40);
+    else ctx.fillRect(-20, L.pos - w, W + 40, w * 2);
+  }
   ctx.restore();
 }
 function drawBoss(){
@@ -917,6 +1183,17 @@ function drawBoss(){
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(0, 0, 46, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
+  }
+  // 突進の照準テレグラフ
+  if (b.aiming > 0){
+    ctx.strokeStyle = `rgba(255,60,90,${0.4 + Math.abs(Math.sin(tReal * 18)) * 0.5})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.moveTo(b.aimX * 46, b.aimY * 46);
+    ctx.lineTo(b.aimX * 420, b.aimY * 420);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
   ctx.rotate(Math.sin(b.t * 2) * 0.08);
   const sc = 1 + b.hitFlash * 0.15;
@@ -1141,16 +1418,46 @@ function drawHUD(){
   ctx.fillStyle = rgb(gc);
   ctx.fillText('×' + mult.toFixed(1), W / 2, fy + 46);
 
-  // 取得済みperk
+  // 取得済みperk（ティッカーの上に表示）
   ctx.textAlign = 'left';
   ctx.font = `15px ${EMOJI}`;
   let px = 18;
   for (const id in perkCounts){
     const p = PERKS.find(q => q.id === id);
     if (!p) continue;
-    ctx.fillText(p.icon + (perkCounts[id] > 1 ? '×' + perkCounts[id] : ''), px, H - 16);
+    ctx.fillText(p.icon + (perkCounts[id] > 1 ? '×' + perkCounts[id] : ''), px, H - 34);
     px += 44;
   }
+
+  // ニュースティッカー（最下段）
+  if (tickerStr){
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(0, H - 24, W, 24);
+    ctx.font = F(12, '600');
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('📰 ' + tickerStr, tickerX, H - 12);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // 実績トースト（右側スタック）
+  ctx.textAlign = 'right';
+  achToasts.forEach((tst, i) => {
+    const a = tst.t < 0.25 ? tst.t / 0.25 : (tst.t > 2.7 ? clamp((3.2 - tst.t) / 0.5, 0, 1) : 1);
+    ctx.globalAlpha = a;
+    ctx.font = F(13, '600');
+    const tw = ctx.measureText(tst.txt).width;
+    const ty = H * 0.32 + i * 34;
+    ctx.fillStyle = 'rgba(35,20,60,0.9)';
+    ctx.beginPath(); ctx.roundRect(W - tw - 38, ty - 15, tw + 24, 28, 14); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,209,102,0.6)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(W - tw - 38, ty - 15, tw + 24, 28, 14); ctx.stroke();
+    ctx.fillStyle = '#ffe08a';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tst.txt, W - 26, ty);
+    ctx.textBaseline = 'alphabetic';
+  });
+  ctx.globalAlpha = 1;
 
   // 限界警告
   if (criticalT > 0.05){
@@ -1243,6 +1550,7 @@ function drawTitle(){
     '📊 四半期ごとに投資戦略をドラフト（保険🛡️・高配当🪙・省エネ💨…）',
     '🐻 第4四半期ごとに「ベア」襲来。逃げながら風でトゲをぶつけて撃退！',
     '💹 好景気・金融緩和・空売り規制…市場イベントを乗りこなせ',
+    '🌀 渦・⚡監視ビーム・💎ダイヤ・🏆実績14種…市場は進化する',
   ];
   ctx.fillStyle = 'rgba(255,255,255,0.8)';
   lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.28 + i * Math.min(H * 0.04, 27)));
@@ -1259,6 +1567,11 @@ function drawTitle(){
     ctx.fillStyle = 'rgba(255,224,138,0.8)';
     ctx.font = F(14, '600');
     ctx.fillText(`歴代最高資産 ${yen(best)}（${rankOf(best)[0]}）`, W / 2, H * 0.935);
+  }
+  if (lifeStats.plays > 0){
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = F(12, '600');
+    ctx.fillText(`通算 ${lifeStats.plays}プレイ ／ 生涯総資産 ${yen(lifeStats.earned)} ／ 🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`, W / 2, H * 0.968);
   }
 }
 function drawOver(){
@@ -1281,9 +1594,11 @@ function drawOver(){
   ctx.font = F(14, '600');
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
   ctx.fillText('最終資産', W / 2, py + 104);
-  ctx.font = F(32);
+  const countUp = clamp(overT / 1.2, 0, 1);
+  const eased = 1 - Math.pow(1 - countUp, 3);
+  ctx.font = F(32 + (countUp >= 1 ? Math.max(0, 4 - (overT - 1.2) * 20) : 0));
   ctx.fillStyle = '#ffe08a';
-  ctx.fillText(yen(score), W / 2, py + 136);
+  ctx.fillText(yen(score * eased), W / 2, py + 136);
 
   const rk = rankOf(score);
   ctx.font = F(20);
@@ -1304,7 +1619,13 @@ function drawOver(){
   ctx.font = F(13.5, '600');
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.fillText(`到達：第${level}四半期 ／ リスクプレミアム ×${totalGraze} ／ 最大倍率 ×${maxMult.toFixed(1)}`, W / 2, py + 240);
-  ctx.fillText(`🐻 ベア撃破 ×${bearKills} ／ 🌈 フィーバー ×${feverCount}`, W / 2, py + 264);
+  ctx.fillText(`🐻 ベア撃破 ×${bearKills} ／ 🌈 フィーバー ×${feverCount} ／ 💨 吹き飛ばし ×${windBlown}`, W / 2, py + 264);
+  if (runUnlocks.length){
+    ctx.font = F(12.5, '600');
+    ctx.fillStyle = '#ffd166';
+    const names = runUnlocks.slice(0, 3).map(a => a.icon + ' ' + a.name).join('　');
+    ctx.fillText(`🆕 実績解除：${names}${runUnlocks.length > 3 ? `　他${runUnlocks.length - 3}件` : ''}`, W / 2, py + 290);
+  }
 
   if (overT > 0.7){
     ctx.globalAlpha = 0.7 + Math.sin(tReal * 4) * 0.3;
@@ -1347,6 +1668,21 @@ function frame(now){
   updateFx(state === 'dying' ? gdt : ((state === 'play' && (paused || draft)) ? 0 : rdt));
   shake = Math.max(0, shake - shake * 7 * rdt - 2 * rdt);
   if (bannerT > 0) bannerT -= rdt;
+  for (let i = achToasts.length - 1; i >= 0; i--){
+    achToasts[i].t += rdt;
+    if (achToasts[i].t > 3.2) achToasts.splice(i, 1);
+  }
+  if ((state === 'play' && !paused && !draft) || state === 'dying') updateTicker(rdt);
+  if (state === 'over' && wasRecord && !recordFxDone && overT > 1.25){
+    recordFxDone = true;
+    const colors = ['#ffd166','#ff7eb6','#4ecdc4','#a06cff','#fff'];
+    for (let i = 0; i < 90; i++){
+      const a = R(-Math.PI, 0), sp = R(150, 600);
+      parts.push({ x: W / 2 + R(-60, 60), y: H / 2 - 40, vx: Math.cos(a) * sp * 0.6, vy: Math.sin(a) * sp,
+        g: 700, drag: 1, rot: R(0, TAU), vr: R(-9, 9), sz: R(3, 7), c: colors[RI(0, colors.length - 1)], t: 0, life: R(1, 2), shape: 'rect' });
+    }
+    sndFever();
+  }
 
   /* ---- 描画 ---- */
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -1354,11 +1690,13 @@ function frame(now){
   ctx.translate(sx, sy);
 
   drawBG();
+  for (const v of vortices) drawVortex(v);
   for (const c of coins) drawCoin(c);
   for (const bm of bombs) drawBomb(bm);
   for (const n of needles) drawNeedle(n);
   if (boss) drawBoss();
   if (state === 'play') drawBalloon();
+  for (const L of lasers) drawLaser(L);
   drawParts();
   drawPopups();
 
@@ -1401,11 +1739,21 @@ window.GAME = {
   pop(){ die('デバッグ'); },
   god(n){ barrier = n; invulnT = 2; },
   bossDamage(n){ if (boss && !boss.entering){ boss.hp -= n; boss.hitFlash = 1; if (boss.hp <= 0) defeatBoss(); } },
+  forceVortex(){ if (state === 'play') spawnVortex(); },
+  forceLaser(){ if (state === 'play') spawnLaser(); },
+  forceGem(){ if (state === 'play') coins.push({ x: W / 2, y: H * 0.4, t: 0, life: 6, ph: 0, gem: true }); },
+  get achCount(){ return Object.keys(achUnlocked).length; },
+  get vortexCount(){ return vortices.length; },
+  get laserCount(){ return lasers.length; },
+  get windBlownCount(){ return windBlown; },
+  get lifeStats(){ return { ...lifeStats }; },
+  resetSave(){ try { localStorage.removeItem('bubblenomics_best'); localStorage.removeItem('bubblenomics_ach'); localStorage.removeItem('bubblenomics_stats'); } catch(e){} },
   get blownCount(){ return needles.filter(n => n.blown).length; },
   debug(){
     return { r: +B.r.toFixed(1), x: +B.x.toFixed(0), y: +B.y.toFixed(0), elapsed: +elapsed.toFixed(1),
       ptrDown: ptr.down, ignoreVent, paused, level, invulnT: +invulnT.toFixed(2),
-      boss: boss ? { y: +boss.y.toFixed(0), entering: boss.entering, life: +boss.life.toFixed(1), hp: boss.hp } : null };
+      boss: boss ? { x: +boss.x.toFixed(0), y: +boss.y.toFixed(0), entering: boss.entering, life: +boss.life.toFixed(1), hp: boss.hp,
+        aiming: +(boss.aiming || 0).toFixed(2), charging: +(boss.charging || 0).toFixed(2), chargeT: +(boss.chargeT || 0).toFixed(1) } : null };
   },
 };
 </script>
