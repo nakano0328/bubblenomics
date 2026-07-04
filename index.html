@@ -15,9 +15,13 @@
 <script>
 'use strict';
 /* =========================================================
-   BUBBLENOMICS v3 〜バブルは、はじける直前がいちばん儲かる〜
+   BUBBLENOMICS v4.1 〜バブルは、はじける直前がいちばん儲かる〜
    弾幕回避 × バブル経済 × ローグライトドラフト × 実績
    1ファイル・外部アセットなし
+
+   構成：CONFIG → UTIL → DATA(perk/実績/気分) → STATE →
+         AUDIO → INPUT → FLOW(開始/被弾/死亡) → BOSS →
+         SPAWN → SIM(simulate+エンティティ更新) → RENDER → DEBUG
    ========================================================= */
 
 const cv = document.getElementById('cv');
@@ -60,6 +64,11 @@ const FONT = '"Hiragino Maru Gothic ProN","Hiragino Kaku Gothic ProN","Yu Gothic
 const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",serif';
 const F = (s, w) => `${w||'bold'} ${s}px ${FONT}`;
 const yen = n => '¥' + Math.floor(n).toLocaleString('ja-JP');
+// localStorage（失敗しても落ちない）
+const store = {
+  get(key, fb){ try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v === null ? fb : v; } catch(e){ return fb; } },
+  set(key, val){ try { localStorage.setItem(key, JSON.stringify(val)); } catch(e){} },
+};
 
 /* ---------- ゲーム定数（バランス調整の中枢） ---------- */
 const MINR = 16, MAXR = 95;
@@ -70,7 +79,20 @@ const THRUST = 1050;
 const SCORE_RATE = 60;
 const QUARTER_SEC = 18;
 const FEVER_DUR = 12;
+// 風・誘導弾
 const WIND_RANGE = 180;            // 噴射風がトゲに届く距離
+const WIND_PUSH = 1500;            // 風の加速度
+const WIND_MAXV = 520;             // 吹き飛ばされたトゲの最高速度
+const HOMING_ACC = 1100;           // 味方化トゲのホーミング加速度
+const HOMING_MAXV = 560;
+// ボス
+const AURA_R = 210;                // タカの利上げオーラ半径
+const AURA_SHRINK = 4;             // オーラ内での資産収縮速度
+const CHARGE_SPEED = 640;          // 突進速度
+const BOSS_BODY_R = 40;            // 体当たり判定
+const BOSS_HIT_R = 52;             // 誘導弾の命中判定
+// 保険
+const SHOCK_R = 210;               // 保険発動時の衝撃波半径
 const inflationRate = lv => Math.min(7 + (lv - 1) * 1.1, 16);
 const multOf = r => (r / MINR) * (r / MINR);
 
@@ -160,28 +182,25 @@ const ACHS = [
   { id:'gem1',     icon:'💎', name:'ダイヤの輝き',     desc:'ダイヤを回収する' },
   { id:'daily1',   icon:'📅', name:'日課の投機',       desc:'「本日の相場」に挑戦する' },
 ];
-let achUnlocked = {};
-try { achUnlocked = JSON.parse(localStorage.getItem('bubblenomics_ach') || '{}') || {}; } catch(e){ achUnlocked = {}; }
+let achUnlocked = store.get('bubblenomics_ach', {});
 let achToasts = [], runUnlocks = [];
 function unlock(id){
   if (achUnlocked[id]) return;
   achUnlocked[id] = true;
-  try { localStorage.setItem('bubblenomics_ach', JSON.stringify(achUnlocked)); } catch(e){}
+  store.set('bubblenomics_ach', achUnlocked);
   const a = ACHS.find(x => x.id === id);
   if (a){ achToasts.push({ txt: `${a.icon} 実績解除「${a.name}」`, t: 0 }); runUnlocks.push(a); sndCoin(); }
 }
 
 /* ---------- 生涯統計 ---------- */
-let lifeStats = { plays: 0, earned: 0, bears: 0 };
-try { const _s = JSON.parse(localStorage.getItem('bubblenomics_stats') || 'null'); if (_s && typeof _s.plays === 'number') lifeStats = _s; } catch(e){}
-function saveStats(){ try { localStorage.setItem('bubblenomics_stats', JSON.stringify(lifeStats)); } catch(e){} }
+let lifeStats = store.get('bubblenomics_stats', { plays: 0, earned: 0, bears: 0 });
+if (typeof lifeStats.plays !== 'number') lifeStats = { plays: 0, earned: 0, bears: 0 };
+function saveStats(){ store.set('bubblenomics_stats', lifeStats); }
 
 /* ---------- デイリー記録・設定 ---------- */
-let dailyRec = { date: '', best: 0 };
-try { const _d = JSON.parse(localStorage.getItem('bubblenomics_daily') || 'null'); if (_d && _d.date) dailyRec = _d; } catch(e){}
-let opts = { noShake: false };
-try { const _o = JSON.parse(localStorage.getItem('bubblenomics_opts') || 'null'); if (_o) opts = _o; } catch(e){}
-function saveOpts(){ try { localStorage.setItem('bubblenomics_opts', JSON.stringify(opts)); } catch(e){} }
+let dailyRec = store.get('bubblenomics_daily', { date: '', best: 0 });
+let opts = store.get('bubblenomics_opts', { noShake: false });
+function saveOpts(){ store.set('bubblenomics_opts', opts); }
 
 const RANKS = [
   [0,      '🌱 養分',          '#9fb2c8'],
@@ -223,12 +242,12 @@ let feverBeatT = 0, feverNoteI = 0;
 // フィーバー
 let fever = 0, feverOn = false, feverT = 0, feverCount = 0;
 // ボス・イベント・ドラフト
-let boss = null, bossCount = 0, bearKills = 0, pendingBoss = false;
+let boss = null, bossCount = 0, bossKills = 0, pendingBoss = false;
 let mkt = null, mktT = 16;
 let draft = null;
 let mood = MOODS[0], isDaily = false;
 let titleBtns = {}, achView = false, shareBtn = null, shareMsgT = 0, titleAmbT = 1;
-try { best = +localStorage.getItem('bubblenomics_best') || 0; } catch(e){}
+best = +store.get('bubblenomics_best', 0) || 0;
 
 const B = { x: 0, y: 0, vx: 0, vy: 0, r: START_R, jetDir: {x:0,y:1} };
 let needles = [], bombs = [], coins = [], parts = [], rings = [], popups = [];
@@ -348,7 +367,7 @@ function onPress(){
   }
 }
 function shareResult(){
-  const txt = `🎈BUBBLENOMICS${isDaily ? '（📅本日の相場）' : ''} 第${level}四半期で崩壊\n💰${yen(score)} ${rankOf(score)[0]}\n🐻×${bearKills} 🌈×${feverCount} ✨×${totalGraze}\nhttps://nakano0328.github.io/bubblenomics/`;
+  const txt = `🎈BUBBLENOMICS${isDaily ? '（📅本日の相場）' : ''} 第${level}四半期で崩壊\n💰${yen(score)} ${rankOf(score)[0]}\n🐻×${bossKills} 🌈×${feverCount} ✨×${totalGraze}\nhttps://nakano0328.github.io/bubblenomics/`;
   try {
     navigator.clipboard.writeText(txt).then(() => { shareMsgT = 2; }, () => { shareMsgT = -2; });
   } catch(e){ shareMsgT = -2; }
@@ -368,7 +387,7 @@ function startGame(daily){
   compoundRate = 0; greedFire = false; ghostPerk = false;
   perkCounts = {}; invulnT = 0; windBlown = 0; achCheckT = 0; recordFxDone = false;
   fever = 0; feverOn = false; feverT = 0; feverCount = 0;
-  boss = null; bossCount = 0; bearKills = 0; pendingBoss = false;
+  boss = null; bossCount = 0; bossKills = 0; pendingBoss = false;
   mkt = null; mktT = 16; draft = null;
   runUnlocks = []; tickerStr = ''; pendingNews = [];
   B.x = W / 2; B.y = H / 2; B.vx = 0; B.vy = 0; B.r = START_R;
@@ -394,23 +413,15 @@ function hitHazard(reason){
     // 衝撃波：近くのトゲ・爆弾を消し飛ばす
     for (let i = needles.length - 1; i >= 0; i--){
       const n = needles[i];
-      if (Math.hypot(n.x - B.x, n.y - B.y) < 210){
-        for (let k = 0; k < 4; k++){
-          const a = R(0, TAU), sp = R(60, 220);
-          parts.push({ x: n.x, y: n.y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, g: 0, drag: 3,
-            rot: 0, vr: 0, sz: R(1.5, 3.5), c: '#6ee7ff', t: 0, life: 0.35, shape: 'dot' });
-        }
+      if (Math.hypot(n.x - B.x, n.y - B.y) < SHOCK_R){
+        emit(4, n.x, n.y, { spd: [60, 220], drag: 3, sz: [1.5, 3.5], c: '#6ee7ff', life: [0.35, 0.35] });
         needles.splice(i, 1);
       }
     }
     for (let i = bombs.length - 1; i >= 0; i--){
       const bm = bombs[i];
-      if (Math.hypot(bm.x - B.x, bm.y - B.y) < 210){
-        for (let k = 0; k < 8; k++){
-          const a = R(0, TAU), sp = R(30, 160);
-          parts.push({ x: bm.x, y: bm.y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, g: 0, drag: 2.5,
-            rot: 0, vr: 0, sz: R(2, 5), c: '#7ec97e', t: 0, life: 0.5, shape: 'dot' });
-        }
+      if (Math.hypot(bm.x - B.x, bm.y - B.y) < SHOCK_R){
+        emit(8, bm.x, bm.y, { spd: [30, 160], drag: 2.5, sz: [2, 5], c: '#7ec97e', life: [0.5, 0.5] });
         bombs.splice(i, 1);
       }
     }
@@ -429,15 +440,10 @@ function die(reason){
     const today = todayJST();
     if (dailyRec.date !== today) dailyRec = { date: today, best: 0 };
     if (score > dailyRec.best) dailyRec.best = Math.floor(score);
-    try { localStorage.setItem('bubblenomics_daily', JSON.stringify(dailyRec)); } catch(e){}
+    store.set('bubblenomics_daily', dailyRec);
   }
-  if (score > best) { best = score; wasRecord = true; try { localStorage.setItem('bubblenomics_best', String(Math.floor(best))); } catch(e){} }
-  const colors = ['#ff7eb6','#ffd166','#4ecdc4','#ff4d6d','#a06cff','#fff'];
-  for (let i = 0; i < 130; i++){
-    const a = R(0, TAU), sp = R(80, 640);
-    parts.push({ x: B.x, y: B.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120, g: 620, drag: 1.1,
-      rot: R(0, TAU), vr: R(-9, 9), sz: R(3, 8), c: colors[RI(0, colors.length - 1)], t: 0, life: R(0.8, 1.8), shape: 'rect' });
-  }
+  if (score > best){ best = score; wasRecord = true; store.set('bubblenomics_best', Math.floor(best)); }
+  emit(130, B.x, B.y, { spd: [80, 640], vy: -120, g: 620, drag: 1.1, vr: 9, sz: [3, 8], c: CONFETTI, life: [0.8, 1.8], shape: 'rect' });
   rings.push({ x: B.x, y: B.y, r: B.r, vr: 700, t: 0, life: 0.45, c: '#fff', w: 5 });
   rings.push({ x: B.x, y: B.y, r: B.r * 0.5, vr: 450, t: 0, life: 0.6, c: rgb(GOLD), w: 3 });
 }
@@ -504,7 +510,7 @@ function startBoss(){
 function defeatBoss(){
   const bonus = Math.floor(2500 * level + 5000 * bossCount);
   score += bonus;
-  bearKills++;
+  bossKills++;
   lifeStats.bears++; saveStats();
   if (boss.type === 'hawk') unlock('hawk1'); else unlock('bear1');
   if (lifeStats.bears >= 3) unlock('bear3');
@@ -515,12 +521,8 @@ function defeatBoss(){
   sndLevel(); sndPop();
   shake = Math.max(shake, 16);
   addFever(0.5);
-  const colors = ['#ffd166','#ffe08a','#fff','#ff7eb6'];
-  for (let i = 0; i < 80; i++){
-    const a = R(0, TAU), sp = R(60, 500);
-    parts.push({ x: boss.x, y: boss.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 100, g: 560, drag: 1.1,
-      rot: R(0, TAU), vr: R(-8, 8), sz: R(3, 7), c: colors[RI(0, colors.length - 1)], t: 0, life: R(0.7, 1.5), shape: 'rect' });
-  }
+  emit(80, boss.x, boss.y, { spd: [60, 500], vy: -100, g: 560, drag: 1.1, vr: 8, sz: [3, 7],
+    c: ['#ffd166','#ffe08a','#fff','#ff7eb6'], life: [0.7, 1.5], shape: 'rect' });
   rings.push({ x: boss.x, y: boss.y, r: 20, vr: 900, t: 0, life: 0.5, c: '#ffd166', w: 6 });
   // 撃破報酬：コインの雨
   for (let i = 0; i < 8; i++){
@@ -548,11 +550,11 @@ function updateBoss(gdt){
   if (b.type === 'hawk' || bossCount >= 3){
     if (b.charging > 0){
       b.charging -= gdt;
-      b.x += b.aimX * 640 * gdt;
-      b.y += b.aimY * 640 * gdt;
+      b.x += b.aimX * CHARGE_SPEED * gdt;
+      b.y += b.aimY * CHARGE_SPEED * gdt;
       if (rng() < 0.5){
-        parts.push({ x: b.x + R(-20, 20), y: b.y + R(-20, 20), vx: -b.aimX * 120, vy: -b.aimY * 120,
-          g: 0, drag: 2.5, rot: 0, vr: 0, sz: R(2, 5), c: 'rgba(255,90,110,0.7)', t: 0, life: 0.4, shape: 'dot' });
+        emit(1, b.x, b.y, { jx: 20, jy: 20, spd: [0, 0], vx: -b.aimX * 120, vy: -b.aimY * 120,
+          drag: 2.5, sz: [2, 5], c: 'rgba(255,90,110,0.7)', life: [0.4, 0.4] });
       }
       if (b.charging <= 0){ b.chargeT = Math.max(4.5, 7 - bossCount); }
     } else if (b.aiming > 0){
@@ -619,15 +621,54 @@ function updateBoss(gdt){
     beep(160, 0.25, 'square', 0.2, -60);
   }
   // 体当たり
-  if (Math.hypot(b.x - B.x, b.y - B.y) < B.r * 0.92 + 40){
+  if (Math.hypot(b.x - B.x, b.y - B.y) < B.r * 0.92 + BOSS_BODY_R){
     hitHazard(b.type === 'hawk' ? 'タカの爪に裂かれてバブル崩壊' : 'ベアに殴られてバブル崩壊');
   }
 }
 
-/* ---------- スポーン ---------- */
+/* ---------- 演出ヘルパー ---------- */
 function popup(x, y, txt, c, size){
   popups.push({ x, y, txt, c: c || '#fff', size: size || 17, t: 0, life: 1.15 });
 }
+// パーティクルをn個まとめて放出する。
+// o: { spd:[min,max] 必須, ang/spread 方向, xs x速度倍率, vx/vy 加算速度, jx/jy 位置ゆらぎ,
+//      g 重力, drag 抵抗, vr 回転速度幅, sz:[min,max], c 色(配列なら抽選), life:[min,max], shape }
+function emit(n, x, y, o){
+  for (let i = 0; i < n; i++){
+    const a = (o.ang !== undefined ? o.ang : R(0, TAU)) + (o.spread ? R(-o.spread, o.spread) : 0);
+    const sp = R(o.spd[0], o.spd[1]);
+    const rect = o.shape === 'rect';
+    parts.push({
+      x: x + (o.jx ? R(-o.jx, o.jx) : 0), y: y + (o.jy ? R(-o.jy, o.jy) : 0),
+      vx: Math.cos(a) * sp * (o.xs || 1) + (o.vx || 0), vy: Math.sin(a) * sp + (o.vy || 0),
+      g: o.g || 0, drag: o.drag || 0,
+      rot: rect ? R(0, TAU) : 0, vr: o.vr ? R(-o.vr, o.vr) : 0,
+      sz: R(o.sz[0], o.sz[1]),
+      c: Array.isArray(o.c) ? o.c[RI(0, o.c.length - 1)] : o.c,
+      t: 0, life: R(o.life[0], o.life[1]), shape: o.shape || 'dot',
+    });
+  }
+}
+const CONFETTI = ['#ff7eb6','#ffd166','#4ecdc4','#ff4d6d','#a06cff','#fff'];
+// 丸型ボタン（タイトル・リザルト共用）
+function pillBtn(r, label, sub, c){
+  c = c || {};
+  ctx.fillStyle = c.bg || 'rgba(35,20,60,0.85)';
+  ctx.strokeStyle = c.border || 'rgba(255,209,102,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, r.h / 2); ctx.fill(); ctx.stroke();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = c.fg || '#ffe08a';
+  ctx.font = F(14);
+  ctx.fillText(label, r.x + r.w / 2, r.y + (sub ? 15 : r.h / 2));
+  if (sub){
+    ctx.font = F(10, '500');
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(sub, r.x + r.w / 2, r.y + 31);
+  }
+}
+
+/* ---------- スポーン ---------- */
 function spawnEdgePoint(margin){
   const side = RI(0, 3);
   if (side === 0) return { x: R(0, W), y: -margin, side };
@@ -744,11 +785,7 @@ function burstBomb(bm){
     needles.push(n);
   }
   rings.push({ x: bm.x, y: bm.y, r: 6, vr: 520, t: 0, life: 0.35, c: '#ffa62b', w: 4 });
-  for (let i = 0; i < 14; i++){
-    const a = R(0, TAU), s2 = R(30, 160);
-    parts.push({ x: bm.x, y: bm.y, vx: Math.cos(a) * s2, vy: Math.sin(a) * s2, g: 0, drag: 2.5,
-      rot: 0, vr: 0, sz: R(2, 5), c: '#7ec97e', t: 0, life: R(0.3, 0.7), shape: 'dot' });
-  }
+  emit(14, bm.x, bm.y, { spd: [30, 160], drag: 2.5, sz: [2, 5], c: '#7ec97e', life: [0.3, 0.7] });
   beep(140, 0.25, 'square', 0.22, -60);
   shake = Math.max(shake, 6);
 }
@@ -813,9 +850,9 @@ function simulate(gdt){
     * (mkt && mkt.id === 'easing' ? 1.6 : 1)
     * (mood.id === 'lowrate' ? 0.85 : 1);
   const inAura = boss && !boss.entering && boss.type === 'hawk'
-    && Math.hypot(boss.x - B.x, boss.y - B.y) < 210;
+    && Math.hypot(boss.x - B.x, boss.y - B.y) < AURA_R;
   if (inAura){
-    B.r = Math.max(MINR, B.r - 4 * gdt);   // 利上げオーラ：インフレ停止＆収縮
+    B.r = Math.max(MINR, B.r - AURA_SHRINK * gdt);   // 利上げオーラ：インフレ停止＆収縮
     if (!boss.auraWarned){ boss.auraWarned = true; popup(B.x, B.y - B.r - 30, '⚠ 利上げオーラ：資産がしぼむ！', '#ffd166', 16); }
   } else {
     B.r += inflNow * gdt;
@@ -828,13 +865,10 @@ function simulate(gdt){
       const nx = dx / d, ny = dy / d;
       B.vx += nx * THRUST * thrustMul * gdt; B.vy += ny * THRUST * thrustMul * gdt;
       B.jetDir = { x: -nx, y: -ny };
-      for (let i = 0; i < 3; i++){
-        const jx = B.x + B.jetDir.x * B.r, jy = B.y + B.jetDir.y * B.r;
-        const a = Math.atan2(B.jetDir.y, B.jetDir.x) + R(-0.5, 0.5);
-        const sp = R(160, 320);
-        parts.push({ x: jx, y: jy, vx: Math.cos(a) * sp + B.vx * 0.4, vy: Math.sin(a) * sp + B.vy * 0.4,
-          g: 0, drag: 3.5, rot: 0, vr: 0, sz: R(2, 4.5), c: 'rgba(220,235,255,0.9)', t: 0, life: R(0.2, 0.4), shape: 'dot' });
-      }
+      emit(3, B.x + B.jetDir.x * B.r, B.y + B.jetDir.y * B.r, {
+        ang: Math.atan2(B.jetDir.y, B.jetDir.x), spread: 0.5, spd: [160, 320],
+        vx: B.vx * 0.4, vy: B.vy * 0.4, drag: 3.5, sz: [2, 4.5],
+        c: 'rgba(220,235,255,0.9)', life: [0.2, 0.4] });
     }
   } else {
     B.jetDir = { x: 0, y: 1 };
@@ -919,7 +953,16 @@ function simulate(gdt){
     coinT = ((mkt && mkt.id === 'boom') ? R(0.5, 1.0) : R(3, 4.5)) * (mood.id === 'bull' ? 0.66 : 1);
   }
 
-  // ---- 針 ----
+  // ---- エンティティ更新（プレイヤー死亡時は false が返り即中断） ----
+  if (!updateNeedles(gdt, venting, mult)) return;
+  if (!updateBombs(gdt)) return;
+  updateVortices(gdt);
+  if (!updateLasers(gdt)) return;
+  updateCoins(gdt, mult);
+}
+
+/* ---------- エンティティ更新 ---------- */
+function updateNeedles(gdt, venting, mult){
   grazeComboT -= gdt;
   if (grazeComboT <= 0) grazeCombo = 0;
   const GR = GRAZE + grazeBonus;
@@ -940,20 +983,20 @@ function simulate(gdt){
             windBlown++;
             if (windBlown >= 10) unlock('wind10');
           }
-          n.vx += B.jetDir.x * 1500 * gdt;
-          n.vy += B.jetDir.y * 1500 * gdt;
+          n.vx += B.jetDir.x * WIND_PUSH * gdt;
+          n.vy += B.jetDir.y * WIND_PUSH * gdt;
           const s = Math.hypot(n.vx, n.vy);
-          if (s > 520){ n.vx *= 520 / s; n.vy *= 520 / s; }
+          if (s > WIND_MAXV){ n.vx *= WIND_MAXV / s; n.vy *= WIND_MAXV / s; }
         }
       }
     }
-    // 吹き飛ばされたトゲ＝味方の誘導弾：ベアへホーミング
+    // 吹き飛ばされたトゲ＝味方の誘導弾：ボスへホーミング
     if (n.blown && boss && !boss.entering){
       const bdx = boss.x - n.x, bdy = boss.y - n.y, bd = Math.hypot(bdx, bdy) || 1;
-      n.vx += bdx / bd * 1100 * gdt;
-      n.vy += bdy / bd * 1100 * gdt;
+      n.vx += bdx / bd * HOMING_ACC * gdt;
+      n.vy += bdy / bd * HOMING_ACC * gdt;
       const bs = Math.hypot(n.vx, n.vy);
-      if (bs > 560){ n.vx *= 560 / bs; n.vy *= 560 / bs; }
+      if (bs > HOMING_MAXV){ n.vx *= HOMING_MAXV / bs; n.vy *= HOMING_MAXV / bs; }
     }
     if (n.type === 'sine' && !n.blown){
       n.x += n.vx * ndt;
@@ -964,24 +1007,19 @@ function simulate(gdt){
       n.rot = Math.atan2(n.vy || 0, n.vx);
     }
     if (n.blown && rng() < 0.3){
-      parts.push({ x: n.x, y: n.y, vx: R(-30, 30), vy: R(-30, 30), g: 0, drag: 2,
-        rot: 0, vr: 0, sz: R(1, 2.5), c: 'rgba(110,231,255,0.8)', t: 0, life: 0.3, shape: 'dot' });
+      emit(1, n.x, n.y, { spd: [0, 30], drag: 2, sz: [1, 2.5], c: 'rgba(110,231,255,0.8)', life: [0.3, 0.3] });
     }
     if (n.age > 0.5 && (n.x < -100 || n.x > W + 100 || n.y < -100 || n.y > H + 100)){
       needles.splice(i, 1); continue;
     }
-    // 吹き飛ばされたトゲ vs ボス
+    // 誘導弾 vs ボス
     if (boss && !boss.entering && n.blown){
-      if (Math.hypot(n.x - boss.x, n.y - boss.y) < 52 + n.hitR){
+      if (Math.hypot(n.x - boss.x, n.y - boss.y) < BOSS_HIT_R + n.hitR){
         boss.hp--; boss.hitFlash = 1;
         sndBossHit();
         popup(boss.x + R(-20, 20), boss.y - 40, '💥', '#fff', 24);
         addFever(0.05);
-        for (let k = 0; k < 6; k++){
-          const a = R(0, TAU), sp = R(60, 260);
-          parts.push({ x: n.x, y: n.y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, g: 0, drag: 3,
-            rot: 0, vr: 0, sz: R(2, 4), c: '#6ee7ff', t: 0, life: 0.35, shape: 'dot' });
-        }
+        emit(6, n.x, n.y, { spd: [60, 260], drag: 3, sz: [2, 4], c: '#6ee7ff', life: [0.35, 0.35] });
         needles.splice(i, 1);
         if (boss.hp <= 0) defeatBoss();
         continue;
@@ -991,7 +1029,7 @@ function simulate(gdt){
     const d = Math.hypot(n.x - B.x, n.y - B.y);
     if (invulnT <= 0 && d < B.r * 0.92 + n.hitR){
       hitHazard('市場の棘に触れてバブル崩壊');
-      if (state !== 'play') return;
+      if (state !== 'play') return false;
       break;   // 保険発動時：衝撃波で配列が変わるためループ打ち切り
     }
     if (!n.grazed && d < B.r + GR + n.hitR){
@@ -1006,15 +1044,12 @@ function simulate(gdt){
       popup(n.x, n.y - 14, `+${yen(bonus).slice(1)} スレスレ!${grazeCombo > 1 ? ' ×' + grazeCombo : ''}`, '#ffd166', 15 + Math.min(grazeCombo * 1.5, 8));
       sndGraze();
       shake = Math.max(shake, 2.5);
-      for (let k = 0; k < 6; k++){
-        const a = R(0, TAU), sp = R(60, 200);
-        parts.push({ x: n.x, y: n.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, g: 0, drag: 3,
-          rot: 0, vr: 0, sz: R(1.5, 3.5), c: '#ffd166', t: 0, life: 0.35, shape: 'dot' });
-      }
+      emit(6, n.x, n.y, { spd: [60, 200], drag: 3, sz: [1.5, 3.5], c: '#ffd166', life: [0.35, 0.35] });
     }
   }
-
-  // ---- サボテン爆弾 ----
+  return true;
+}
+function updateBombs(gdt){
   for (let i = bombs.length - 1; i >= 0; i--){
     const bm = bombs[i];
     bm.t += gdt; bm.fuse -= gdt;
@@ -1024,13 +1059,14 @@ function simulate(gdt){
     }
     if (invulnT <= 0 && Math.hypot(bm.x - B.x, bm.y - B.y) < B.r * 0.92 + bm.hitR){
       hitHazard('サボテンに触れてバブル崩壊');
-      if (state !== 'play') return;
+      if (state !== 'play') return false;
       break;
     }
     if (bm.fuse <= 0){ burstBomb(bm); bombs.splice(i, 1); }
   }
-
-  // ---- テーパリング渦（吸引） ----
+  return true;
+}
+function updateVortices(gdt){
   for (let i = vortices.length - 1; i >= 0; i--){
     const v = vortices[i];
     v.t += gdt;
@@ -1043,7 +1079,7 @@ function simulate(gdt){
       B.vx += dx / d * f * gdt;
       B.vy += dy / d * f * gdt;
     }
-    // 渦に吸われる塵の演出
+    // 渦に吸われる塵の演出（中心へ向かう速度が必要なので emit ではなく直接生成）
     if (rng() < 0.4){
       const a = R(0, TAU), rr = R(v.R * 0.4, v.R);
       parts.push({ x: v.x + Math.cos(a) * rr, y: v.y + Math.sin(a) * rr,
@@ -1051,8 +1087,8 @@ function simulate(gdt){
         g: 0, drag: 0.4, rot: 0, vr: 0, sz: R(1, 2.5), c: 'rgba(200,191,255,0.6)', t: 0, life: 0.8, shape: 'dot' });
     }
   }
-
-  // ---- 当局の監視ビーム ----
+}
+function updateLasers(gdt){
   for (let i = lasers.length - 1; i >= 0; i--){
     const L = lasers[i];
     L.t += gdt;
@@ -1061,12 +1097,13 @@ function simulate(gdt){
       const d = L.vertical ? Math.abs(B.x - L.pos) : Math.abs(B.y - L.pos);
       if (d < B.r * 0.92 + 12){
         hitHazard('当局の監視ビームに焼かれてバブル崩壊');
-        if (state !== 'play') return;
+        if (state !== 'play') return false;
       }
     }
   }
-
-  // ---- コイン（配当） ----
+  return true;
+}
+function updateCoins(gdt, mult){
   for (let i = coins.length - 1; i >= 0; i--){
     const c = coins[i];
     c.t += gdt;
@@ -1081,11 +1118,8 @@ function simulate(gdt){
       popup(c.x, c.y - 10, c.gem ? `+${yen(bonus).slice(1)} 時価総額💎` : `+${yen(bonus).slice(1)} 配当💰`, c.gem ? '#9becff' : '#ffe08a', c.gem ? 22 : 18);
       sndCoin();
       if (c.gem) beep(1760, 0.25, 'sine', 0.2);
-      for (let k = 0; k < (c.gem ? 18 : 10); k++){
-        const a = R(0, TAU), sp = R(40, c.gem ? 260 : 180);
-        parts.push({ x: c.x, y: c.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, g: 240, drag: 1.5,
-          rot: R(0, TAU), vr: R(-6, 6), sz: R(2, 4), c: c.gem ? '#9becff' : '#ffd166', t: 0, life: 0.6, shape: 'rect' });
-      }
+      emit(c.gem ? 18 : 10, c.x, c.y, { spd: [40, c.gem ? 260 : 180], vy: -40, g: 240, drag: 1.5,
+        vr: 6, sz: [2, 4], c: c.gem ? '#9becff' : '#ffd166', life: [0.6, 0.6], shape: 'rect' });
       coins.splice(i, 1); continue;
     }
     if (c.t > c.life){ coins.splice(i, 1); }
@@ -1266,15 +1300,15 @@ function drawBoss(){
   ctx.translate(b.x, b.y);
   // タカの利上げオーラ（資産がしぼむ危険域）
   if (hawk && !b.entering){
-    const ag = ctx.createRadialGradient(0, 0, 40, 0, 0, 210);
+    const ag = ctx.createRadialGradient(0, 0, 40, 0, 0, AURA_R);
     ag.addColorStop(0, 'rgba(224,179,77,0.14)');
     ag.addColorStop(1, 'rgba(224,179,77,0)');
     ctx.fillStyle = ag;
-    ctx.beginPath(); ctx.arc(0, 0, 210, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, AURA_R, 0, TAU); ctx.fill();
     ctx.strokeStyle = `rgba(224,179,77,${0.25 + Math.sin(tReal * 4) * 0.1})`;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 10]);
-    ctx.beginPath(); ctx.arc(0, 0, 210, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, AURA_R, 0, TAU); ctx.stroke();
     ctx.setLineDash([]);
   }
   const auraCol = hawk ? '224,179,77' : '255,60,80';
@@ -1674,22 +1708,9 @@ function drawTitle(){
   const bw = Math.min(190, W * 0.42), bh = 42, bgap = 14;
   titleBtns.daily = { x: W / 2 - bw - bgap / 2, y: H * 0.745, w: bw, h: bh };
   titleBtns.ach   = { x: W / 2 + bgap / 2,      y: H * 0.745, w: bw, h: bh };
-  const drawBtn = (r, label, sub) => {
-    ctx.fillStyle = 'rgba(35,20,60,0.85)';
-    ctx.strokeStyle = 'rgba(255,209,102,0.55)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 21); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#ffe08a';
-    ctx.font = F(14);
-    ctx.fillText(label, r.x + r.w / 2, r.y + (sub ? 15 : r.h / 2));
-    if (sub){
-      ctx.font = F(10, '500');
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillText(sub, r.x + r.w / 2, r.y + 31);
-    }
-  };
   const todayBest = dailyRec.date === todayJST() ? `本日ベスト ${yen(dailyRec.best)}` : '毎日同じ相場で競える';
-  drawBtn(titleBtns.daily, '📅 本日の相場', todayBest);
-  drawBtn(titleBtns.ach, `🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`, 'タップで一覧');
+  pillBtn(titleBtns.daily, '📅 本日の相場', todayBest);
+  pillBtn(titleBtns.ach, `🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`, 'タップで一覧');
 
   ctx.globalAlpha = 0.7 + Math.sin(tReal * 4) * 0.3;
   ctx.font = F(Math.min(W * 0.04, 22));
@@ -1786,7 +1807,7 @@ function drawOver(){
   ctx.font = F(13.5, '600');
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.fillText(`到達：第${level}四半期 ／ リスクプレミアム ×${totalGraze} ／ 最大倍率 ×${maxMult.toFixed(1)}`, W / 2, py + 240);
-  ctx.fillText(`🐻 ベア撃破 ×${bearKills} ／ 🌈 フィーバー ×${feverCount} ／ 💨 吹き飛ばし ×${windBlown}`, W / 2, py + 264);
+  ctx.fillText(`🐻 ベア撃破 ×${bossKills} ／ 🌈 フィーバー ×${feverCount} ／ 💨 吹き飛ばし ×${windBlown}`, W / 2, py + 264);
   if (runUnlocks.length){
     ctx.font = F(12.5, '600');
     ctx.fillStyle = '#ffd166';
@@ -1803,12 +1824,8 @@ function drawOver(){
     // シェアボタン
     const sbw = 200, sbh = 34;
     shareBtn = { x: W / 2 - sbw / 2, y: py + 344, w: sbw, h: sbh };
-    ctx.fillStyle = 'rgba(20,10,40,0.85)';
-    ctx.strokeStyle = 'rgba(110,231,255,0.55)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.roundRect(shareBtn.x, shareBtn.y, sbw, sbh, 17); ctx.fill(); ctx.stroke();
-    ctx.font = F(14);
-    ctx.fillStyle = '#6ee7ff';
-    ctx.fillText('📋 結果をコピー', W / 2, shareBtn.y + sbh / 2);
+    pillBtn(shareBtn, '📋 結果をコピー', null,
+      { bg: 'rgba(20,10,40,0.85)', border: 'rgba(110,231,255,0.55)', fg: '#6ee7ff' });
     if (shareMsgT !== 0){
       ctx.font = F(12, '600');
       ctx.fillStyle = shareMsgT > 0 ? '#7ee787' : '#ff8fa3';
@@ -1858,12 +1875,8 @@ function frame(now){
   if ((state === 'play' && !paused && !draft) || state === 'dying') updateTicker(rdt);
   if (state === 'over' && wasRecord && !recordFxDone && overT > 1.25){
     recordFxDone = true;
-    const colors = ['#ffd166','#ff7eb6','#4ecdc4','#a06cff','#fff'];
-    for (let i = 0; i < 90; i++){
-      const a = R(-Math.PI, 0), sp = R(150, 600);
-      parts.push({ x: W / 2 + R(-60, 60), y: H / 2 - 40, vx: Math.cos(a) * sp * 0.6, vy: Math.sin(a) * sp,
-        g: 700, drag: 1, rot: R(0, TAU), vr: R(-9, 9), sz: R(3, 7), c: colors[RI(0, colors.length - 1)], t: 0, life: R(1, 2), shape: 'rect' });
-    }
+    emit(90, W / 2, H / 2 - 40, { ang: -Math.PI / 2, spread: Math.PI / 2, spd: [150, 600], xs: 0.6,
+      jx: 60, g: 700, drag: 1, vr: 9, sz: [3, 7], c: ['#ffd166','#ff7eb6','#4ecdc4','#a06cff','#fff'], life: [1, 2], shape: 'rect' });
     sndFever();
   }
 
@@ -1961,7 +1974,7 @@ window.GAME = {
   get laserCount(){ return lasers.length; },
   get windBlownCount(){ return windBlown; },
   get lifeStats(){ return { ...lifeStats }; },
-  resetSave(){ try { localStorage.removeItem('bubblenomics_best'); localStorage.removeItem('bubblenomics_ach'); localStorage.removeItem('bubblenomics_stats'); } catch(e){} },
+  resetSave(){ try { ['best','ach','stats','daily','opts'].forEach(k => localStorage.removeItem('bubblenomics_' + k)); } catch(e){} },
   get blownCount(){ return needles.filter(n => n.blown).length; },
   debug(){
     return { r: +B.r.toFixed(1), x: +B.x.toFixed(0), y: +B.y.toFixed(0), elapsed: +elapsed.toFixed(1),
