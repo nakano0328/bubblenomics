@@ -86,8 +86,8 @@ function frame(now){
 
   if (state === 'play' || state === 'dying') drawHUD();
   if (state === 'title') drawTitle();
-  if (state === 'title' && achView) drawAchievements();
-  if (state === 'title' && helpView) drawHelp();
+  if (state === 'title' && overlayView === 'ach') drawAchievements();
+  if (state === 'title' && overlayView === 'help') drawHelp();
   if (state === 'over') drawOver();
   if (draft && state === 'play') drawDraft();
   if (paused && state === 'play' && !draft){
@@ -103,6 +103,21 @@ function frame(now){
   v.addColorStop(1, 'rgba(10,4,24,0.45)');
   ctx.fillStyle = v;
   ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  uiCursor();
+}
+// ボタンの上ではポインタ、プレイ中は照準、それ以外は矢印カーソル
+function uiCursor(){
+  let hov = false;
+  if (state === 'title' && !overlayView){
+    hov = ptrIn(titleBtns.daily) || ptrIn(titleBtns.help) || ptrIn(titleBtns.ach)
+       || skinBtns.some(r => ptrIn(r, 7));
+  } else if (state === 'over'){
+    hov = ptrIn(retryBtn) || ptrIn(menuBtn) || ptrIn(shareBtn);
+  } else if (state === 'play' && draft){
+    hov = draft.rects.some(r => ptrIn(r));
+  }
+  cv.style.cursor = hov ? 'pointer' : (state === 'play' && !draft ? 'crosshair' : 'default');
 }
 requestAnimationFrame(frame);
 
@@ -131,7 +146,7 @@ window.GAME = {
   get moodId(){ return mood && mood.id; },
   get bossType(){ return boss && boss.type; },
   get isDailyRun(){ return isDaily; },
-  toggleAch(){ if (state === 'title') achView = !achView; },
+  toggleAch(){ if (state === 'title') overlayView = overlayView === 'ach' ? null : 'ach'; },
   share(){ if (state === 'over') shareResult(); },
   forceGem(){ if (state === 'play') coins.push({ x: W / 2, y: H * 0.4, t: 0, life: 6, ph: 0, gem: true }); },
   get achCount(){ return Object.keys(achUnlocked).length; },

@@ -22,7 +22,7 @@ let boss = null, bossCount = 0, bossKills = 0, pendingBoss = false;
 let mkt = null, mktT = 16;
 let draft = null;
 let mood = MOODS[0], isDaily = false;
-let titleBtns = {}, achView = false, helpView = false, shareBtn = null, shareMsgT = 0, titleAmbT = 1;
+let titleBtns = {}, overlayView = null /* null | 'ach' | 'help' */, shareBtn = null, shareMsgT = 0, titleAmbT = 1;
 let retryBtn = null, menuBtn = null, skinBtns = [];
 // BGMシーケンサ
 let bgmStepT = 0, bgmStep = 0;

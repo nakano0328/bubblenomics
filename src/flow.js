@@ -18,7 +18,7 @@ function startGame(daily){
   B.x = W / 2; B.y = H / 2; B.vx = 0; B.vy = 0; B.r = START_R;
   needles = []; bombs = []; coins = []; parts = []; rings = []; popups = [];
   vortices = []; lasers = [];
-  achView = false; helpView = false; shareMsgT = 0;
+  overlayView = null; shareMsgT = 0;
   mood = MOODS[Math.floor(rng() * MOODS.length)];
   bannerTxt = `${isDaily ? '📅 本日の相場　' : ''}${mood.icon} ${mood.name} — ${mood.desc}`;
   bannerT = 3.2;
@@ -30,7 +30,7 @@ function gotoTitle(){
   boss = null; draft = null; pendingBoss = false;
   bombs = []; vortices = []; lasers = [];
   feverOn = false; fever = 0;
-  paused = false; achView = false; helpView = false; shareMsgT = 0;
+  paused = false; overlayView = null; shareMsgT = 0;
   if (ventGain && AC) ventGain.gain.setTargetAtTime(0, AC.currentTime, 0.02);
 }
 function vibrate(pat){ try { if (navigator.vibrate) navigator.vibrate(pat); } catch(e){} }

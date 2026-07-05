@@ -19,8 +19,18 @@ window.addEventListener('keydown', e => {
   if (e.key === 'b' || e.key === 'B') { opts.noBgm = !opts.noBgm; saveOpts(); }
   if (e.key === 'v' || e.key === 'V') { opts.noShake = !opts.noShake; saveOpts(); }
   if (e.key === 'p' || e.key === 'P') { if (state === 'play' && !draft) paused = !paused; }
+  if (e.key === 'Escape'){
+    if (state === 'title' && overlayView){ overlayView = null; return; }
+    if (state === 'play' && !draft) paused = !paused;
+    return;
+  }
   if (draft && ['1','2','3'].includes(e.key)) { chooseDraft(+e.key - 1); return; }
-  if (e.key === ' ' || e.key === 'Enter') { initAudio(); onPress(); }
+  if (e.key === ' ' || e.key === 'Enter'){
+    initAudio();
+    // リザルトでは Space/Enter＝もう一度（マウス位置に関係なく再上場）
+    if (state === 'over' && overT > 0.7){ startGame(isDaily); ignoreVent = true; return; }
+    onPress();
+  }
 });
 window.addEventListener('keyup', e => keys.delete(e.key));
 
@@ -35,39 +45,38 @@ function keyDir(){
 function onPress(){
   if (state === 'play' && draft){
     for (let i = 0; i < draft.rects.length; i++){
-      const r = draft.rects[i];
-      if (ptr.x >= r.x && ptr.x <= r.x + r.w && ptr.y >= r.y && ptr.y <= r.y + r.h){ chooseDraft(i); break; }
+      if (ptrIn(draft.rects[i])){ chooseDraft(i); break; }
     }
     ignoreVent = true;
     return;
   }
-  const hit = r => r && ptr.x >= r.x && ptr.x <= r.x + r.w && ptr.y >= r.y && ptr.y <= r.y + r.h;
-  if (state === 'title'){
-    if (achView || helpView){ achView = false; helpView = false; return; }
-    if (hit(titleBtns.ach)){ achView = true; beep(600, 0.08, 'triangle', 0.15); return; }
-    if (hit(titleBtns.help)){ helpView = true; beep(600, 0.08, 'triangle', 0.15); return; }
-    if (hit(titleBtns.daily)){ startGame(true); ignoreVent = true; return; }
-    // スキン選択
-    for (let i = 0; i < skinBtns.length; i++){
-      if (hit(skinBtns[i])){
-        if (Object.keys(achUnlocked).length >= SKINS[i].need){
-          opts.skin = i; saveOpts();
-          beep(880, 0.08, 'sine', 0.15);
-        } else {
-          popup(ptr.x, ptr.y - 24, `🔒 実績${SKINS[i].need}個で解放`, '#ff8fa3', 14);
-        }
-        return;
+  if (state === 'title') pressTitle();
+  else if (state === 'over') pressOver();
+}
+function pressTitle(){
+  if (overlayView){ overlayView = null; return; }
+  if (ptrIn(titleBtns.ach)){ overlayView = 'ach'; beep(600, 0.08, 'triangle', 0.15); return; }
+  if (ptrIn(titleBtns.help)){ overlayView = 'help'; beep(600, 0.08, 'triangle', 0.15); return; }
+  if (ptrIn(titleBtns.daily)){ startGame(true); ignoreVent = true; return; }
+  // スキン選択（タップしやすいよう判定を7px広げる）
+  for (let i = 0; i < skinBtns.length; i++){
+    if (ptrIn(skinBtns[i], 7)){
+      if (Object.keys(achUnlocked).length >= SKINS[i].need){
+        opts.skin = i; saveOpts();
+        beep(880, 0.08, 'sine', 0.15);
+      } else {
+        popup(ptr.x, ptr.y - 24, `🔒 実績${SKINS[i].need}個で解放`, '#ff8fa3', 14);
       }
-    }
-    startGame(); ignoreVent = true;
-  }
-  else if (state === 'over'){
-    if (hit(shareBtn)){ shareResult(); return; }
-    if (overT > 0.7){
-      if (hit(retryBtn)){ startGame(isDaily); ignoreVent = true; return; }
-      gotoTitle();   // メニューボタン or それ以外のクリックはタイトルへ
+      return;
     }
   }
+  startGame(); ignoreVent = true;
+}
+function pressOver(){
+  if (ptrIn(shareBtn)){ shareResult(); return; }
+  if (overT <= 0.7) return;
+  if (ptrIn(retryBtn)){ startGame(isDaily); ignoreVent = true; return; }
+  gotoTitle();   // メニューボタン or それ以外のクリックはタイトルへ
 }
 function shareResult(){
   const txt = `🎈BUBBLENOMICS${isDaily ? '（📅本日の相場）' : ''} 第${level}四半期で崩壊\n💰${yen(score)} ${rankOf(score)[0]}\n🐻×${bossKills} 🌈×${feverCount} ✨×${totalGraze}\nhttps://nakano0328.github.io/bubblenomics/`;

@@ -23,13 +23,22 @@ function emit(n, x, y, o){
   }
 }
 const CONFETTI = ['#ff7eb6','#ffd166','#4ecdc4','#ff4d6d','#a06cff','#fff'];
-// 丸型ボタン（タイトル・リザルト共用）
+// 矩形にポインタが載っているか（当たり判定共通・padで判定だけ広げられる）
+function ptrIn(r, pad){
+  if (!r) return false;
+  const p = pad || 0;
+  return ptr.x >= r.x - p && ptr.x <= r.x + r.w + p && ptr.y >= r.y - p && ptr.y <= r.y + r.h + p;
+}
+// 丸型ボタン（タイトル・リザルト共用）。ホバーで明るくなる
 function pillBtn(r, label, sub, c){
   c = c || {};
+  const hov = ptrIn(r);
   ctx.fillStyle = c.bg || 'rgba(35,20,60,0.85)';
+  ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, r.h / 2); ctx.fill();
+  if (hov){ ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); }
   ctx.strokeStyle = c.border || 'rgba(255,209,102,0.55)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, r.h / 2); ctx.fill(); ctx.stroke();
+  ctx.lineWidth = hov ? 2.5 : 1.5;
+  ctx.stroke();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = c.fg || '#ffe08a';
   ctx.font = F(14);

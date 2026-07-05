@@ -67,8 +67,9 @@ src/
   effects.js        … パーティクル放出・ポップアップ・ボタン描画の共通処理
   spawn.js          … 敵・アイテムの出現ロジック
   simulation.js     … メイン更新（simulate）とエンティティ更新
-  render.js         … 全描画（背景・風船・HUD・タイトル・リザルト 等）
-  main.js           … ゲームループとデバッグフック
+  render-world.js   … ワールド描画（背景・エンティティ・風船・ボス）
+  render-ui.js      … UI描画（HUD・ドラフト・タイトル・リザルト・オーバーレイ）
+  main.js           … ゲームループ・カーソル制御・デバッグフック
 ```
 
 デプロイは GitHub Actions（`.github/workflows/deploy.yml`）でリポジトリをそのまま GitHub Pages へ公開しています。
