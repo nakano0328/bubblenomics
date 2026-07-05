@@ -524,7 +524,7 @@ function drawDraft(){
   }
 }
 function drawTitle(){
-  B.x = W / 2; B.y = H * 0.64 + Math.sin(tReal * 1.6) * 12; B.r = 46;
+  B.x = W / 2; B.y = H * 0.50 + Math.sin(tReal * 1.6) * 12; B.r = 52;
   B.vx = Math.cos(tReal * 1.1) * 20; B.vy = Math.sin(tReal * 1.6) * 18;
   B.jetDir = { x: 0, y: 1 };
   drawBalloon();
@@ -532,47 +532,42 @@ function drawTitle(){
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const ts = Math.min(W * 0.085, 58);
   ctx.font = F(ts);
-  const g = ctx.createLinearGradient(0, H * 0.14 - ts, 0, H * 0.14 + ts);
+  const g = ctx.createLinearGradient(0, H * 0.17 - ts, 0, H * 0.17 + ts);
   g.addColorStop(0, '#ffe08a'); g.addColorStop(1, '#ff7eb6');
   ctx.fillStyle = g;
   ctx.strokeStyle = 'rgba(20,10,40,0.8)'; ctx.lineWidth = 6;
-  ctx.strokeText('BUBBLENOMICS', W / 2, H * 0.14);
-  ctx.fillText('BUBBLENOMICS', W / 2, H * 0.14);
+  ctx.strokeText('BUBBLENOMICS', W / 2, H * 0.17);
+  ctx.fillText('BUBBLENOMICS', W / 2, H * 0.17);
   ctx.font = F(Math.min(W * 0.032, 19));
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillText('〜バブルは、はじける直前がいちばん儲かる〜', W / 2, H * 0.14 + ts * 0.85);
+  ctx.fillText('〜バブルは、はじける直前がいちばん儲かる〜', W / 2, H * 0.17 + ts * 0.85);
 
   // 日替わり相場格言
   ctx.font = `italic 500 ${Math.min(W * 0.024, 13)}px ${FONT}`;
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.fillText(`“${todayQuote()}”`, W / 2, H * 0.235);
+  ctx.fillText(`“${todayQuote()}”`, W / 2, H * 0.30);
 
-  ctx.font = F(Math.min(W * 0.027, 15.5), '600');
-  const lines = [
-    '🎈 ふくらむほど資産が サイズ² で爆増。触れたら崩壊、ふくらみ切っても崩壊',
-    '💨 長押し：噴射で移動＆しぼむ。噴射の風でトゲを吹き飛ばせ！',
-    '✨ スレスレ回避＝リスクプレミアム → ゲージMAXで 🌈フィーバー資産3倍',
-    '📊 四半期ごとに投資戦略をドラフト（保険🛡️・高配当🪙・省エネ💨…）',
-    '🐻 第4四半期ごとに「ベア」襲来。逃げながら風でトゲをぶつけて撃退！',
-    '💹 好景気・金融緩和・空売り規制…市場イベントを乗りこなせ',
-    '🦅 タカ・🌀渦・⚡ビーム・📅日替わり相場・🏆実績16種…市場は進化する',
-  ];
+  // 操作はこれだけ（詳しくは ❓遊び方）
+  ctx.font = F(Math.min(W * 0.03, 16), '600');
   ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.28 + i * Math.min(H * 0.04, 27)));
+  ctx.fillText('💨 長押しで噴射移動（しぼむ）／ 離すと ふくらんで資産が増える', W / 2, H * 0.645);
 
   // モード選択ボタン
-  const bw = Math.min(190, W * 0.42), bh = 42, bgap = 14;
-  titleBtns.daily = { x: W / 2 - bw - bgap / 2, y: H * 0.745, w: bw, h: bh };
-  titleBtns.ach   = { x: W / 2 + bgap / 2,      y: H * 0.745, w: bw, h: bh };
-  const todayBest = dailyRec.date === todayJST() ? `本日ベスト ${yen(dailyRec.best)}` : '毎日同じ相場で競える';
-  pillBtn(titleBtns.daily, '📅 本日の相場', todayBest);
-  pillBtn(titleBtns.ach, `🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`, 'タップで一覧');
+  const bw = Math.min(150, (W - 56) / 3), bh = 40, bgap = 10;
+  const brow = bw * 3 + bgap * 2;
+  const bx0 = W / 2 - brow / 2, by0 = H * 0.71;
+  titleBtns.daily = { x: bx0,                     y: by0, w: bw, h: bh };
+  titleBtns.help  = { x: bx0 + bw + bgap,         y: by0, w: bw, h: bh };
+  titleBtns.ach   = { x: bx0 + (bw + bgap) * 2,   y: by0, w: bw, h: bh };
+  pillBtn(titleBtns.daily, '📅 本日の相場');
+  pillBtn(titleBtns.help, '❓ 遊び方', null, { fg: 'rgba(255,255,255,0.85)', border: 'rgba(255,255,255,0.35)' });
+  pillBtn(titleBtns.ach, `🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`);
 
   // 風船スキン（実績数で解放）
   skinBtns = [];
   const sw = 26, sgap = 10;
   const stotal = SKINS.length * sw + (SKINS.length - 1) * sgap;
-  const sx0 = W / 2 - stotal / 2, sy0 = H * 0.808;
+  const sx0 = W / 2 - stotal / 2, sy0 = H * 0.79;
   const achN = Object.keys(achUnlocked).length;
   SKINS.forEach((sk, i) => {
     const x = sx0 + i * (sw + sgap);
@@ -596,20 +591,17 @@ function drawTitle(){
   ctx.globalAlpha = 0.7 + Math.sin(tReal * 4) * 0.3;
   ctx.font = F(Math.min(W * 0.04, 22));
   ctx.fillStyle = '#ffe08a';
-  ctx.fillText('クリック / タップ で開場', W / 2, H * 0.87);
+  ctx.fillText('クリック / タップ で開場', W / 2, H * 0.865);
   ctx.globalAlpha = 1;
-  ctx.font = F(12, '500');
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.fillText('マウス or WASD/矢印キー ／ M:ミュート B:BGM P:ポーズ V:振動', W / 2, H * 0.905);
   if (best > 0){
     ctx.fillStyle = 'rgba(255,224,138,0.8)';
     ctx.font = F(14, '600');
-    ctx.fillText(`歴代最高資産 ${yen(best)}（${rankOf(best)[0]}）`, W / 2, H * 0.935);
+    ctx.fillText(`歴代最高資産 ${yen(best)}（${rankOf(best)[0]}）`, W / 2, H * 0.915);
   }
   if (lifeStats.plays > 0){
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.font = F(12, '600');
-    ctx.fillText(`通算 ${lifeStats.plays}プレイ ／ 生涯総資産 ${yen(lifeStats.earned)} ／ 🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`, W / 2, H * 0.968);
+    ctx.fillText(`通算 ${lifeStats.plays}プレイ ／ 生涯総資産 ${yen(lifeStats.earned)}`, W / 2, H * 0.95);
   }
 }
 function drawAchievements(){
@@ -638,6 +630,29 @@ function drawAchievements(){
     ctx.fillText(a.desc, W * 0.88, y);
   });
   ctx.globalAlpha = 1;
+  ctx.textAlign = 'center';
+  ctx.font = F(14, '600');
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('クリックで閉じる', W / 2, H * 0.96);
+}
+function drawHelp(){
+  ctx.fillStyle = 'rgba(12,7,28,0.96)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = F(24);
+  ctx.fillStyle = '#ffe08a';
+  ctx.fillText('❓ 遊び方', W / 2, H * 0.08);
+  const rowH = Math.min(40, (H * 0.78) / HELP_LINES.length);
+  const y0 = H * 0.16;
+  HELP_LINES.forEach((l, i) => {
+    const y = y0 + i * rowH;
+    ctx.textAlign = 'left';
+    ctx.font = `${Math.min(17, rowH * 0.5)}px ${EMOJI}`;
+    ctx.fillText(l[0], W * 0.06, y);
+    ctx.font = F(Math.min(13, W * 0.0255), '600');
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(l[1], W * 0.13, y);
+  });
   ctx.textAlign = 'center';
   ctx.font = F(14, '600');
   ctx.fillStyle = 'rgba(255,255,255,0.6)';

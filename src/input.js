@@ -43,8 +43,9 @@ function onPress(){
   }
   const hit = r => r && ptr.x >= r.x && ptr.x <= r.x + r.w && ptr.y >= r.y && ptr.y <= r.y + r.h;
   if (state === 'title'){
-    if (achView){ achView = false; return; }
+    if (achView || helpView){ achView = false; helpView = false; return; }
     if (hit(titleBtns.ach)){ achView = true; beep(600, 0.08, 'triangle', 0.15); return; }
+    if (hit(titleBtns.help)){ helpView = true; beep(600, 0.08, 'triangle', 0.15); return; }
     if (hit(titleBtns.daily)){ startGame(true); ignoreVent = true; return; }
     // スキン選択
     for (let i = 0; i < skinBtns.length; i++){

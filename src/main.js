@@ -87,6 +87,7 @@ function frame(now){
   if (state === 'play' || state === 'dying') drawHUD();
   if (state === 'title') drawTitle();
   if (state === 'title' && achView) drawAchievements();
+  if (state === 'title' && helpView) drawHelp();
   if (state === 'over') drawOver();
   if (draft && state === 'play') drawDraft();
   if (paused && state === 'play' && !draft){
