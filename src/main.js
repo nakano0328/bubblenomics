@@ -128,6 +128,8 @@ window.GAME = {
   get level(){ return level; },
   get needleCount(){ return needles.length; },
   get draftOpen(){ return !!draft; },
+  get draftIds(){ return draft ? draft.opts.map(p => p.id) : null; },
+  openDraftNow(){ if (state === 'play' && !draft) openDraft(); },
   get bossHp(){ return boss ? boss.hp : null; },
   get fever(){ return fever; },
   get barrier(){ return barrier; },

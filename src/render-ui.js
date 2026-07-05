@@ -94,7 +94,10 @@ function drawHUD(){
   for (const id in perkCounts){
     const p = PERKS.find(q => q.id === id);
     if (!p) continue;
-    ctx.fillText(p.icon + (perkCounts[id] > 1 ? '×' + perkCounts[id] : ''), px, H - 34);
+    // 保険は残数を表示（使い切ったら消える）。他は取得回数
+    const n = id === 'shield' ? barrier : perkCounts[id];
+    if (!n) continue;
+    ctx.fillText(p.icon + (n > 1 ? '×' + n : ''), px, H - 34);
     px += 44;
   }
 
@@ -189,10 +192,12 @@ function drawDraft(){
     ctx.font = F(12.5, '600');
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     p.desc.forEach((l, j) => ctx.fillText(l, 0, -chh / 2 + 130 + j * 20));
-    if (perkCounts[p.id]){
+    // 保険は「いま持っている数」、それ以外は取得回数を表示
+    const owned = p.id === 'shield' ? barrier : perkCounts[p.id];
+    if (owned){
       ctx.font = F(11, '600');
       ctx.fillStyle = 'rgba(110,231,255,0.85)';
-      ctx.fillText(`所持 ×${perkCounts[p.id]}`, 0, -chh / 2 + 178);
+      ctx.fillText(`所持 ×${owned}`, 0, -chh / 2 + 192);
     }
     ctx.font = F(13, '600');
     ctx.fillStyle = 'rgba(255,255,255,0.4)';

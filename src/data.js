@@ -8,7 +8,7 @@ const PERKS = [
   { id:'coin',   icon:'🪙', name:'高配当株',     persistent:true,
     desc:['配当ボーナス','+60%'],                    apply(){ coinMul *= 1.6; } },
   { id:'shield', icon:'🛡️', name:'保険契約',     persistent:true,
-    desc:['崩壊を1回防ぐ（最大3）','※過熱崩壊は対象外'], apply(){ barrier = Math.min(3, barrier + 1); } },
+    desc:['崩壊を1回防ぐ（所持3つまで）','使えば何度でも買い直せる','※過熱崩壊は対象外'], apply(){ barrier = Math.min(3, barrier + 1); } },
   { id:'cool',   icon:'🧊', name:'金融引き締め', persistent:true,
     desc:['インフレ速度','−18%'],                    apply(){ inflMul *= 0.82; } },
   { id:'thrust', icon:'🚀', name:'追い風',       persistent:true,
