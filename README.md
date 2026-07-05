@@ -37,9 +37,36 @@
 
 ## 技術
 
-- 外部アセット・依存ライブラリ **ゼロ** の単一HTMLファイル
+- 外部アセット・依存ライブラリ・ビルドツール **ゼロ**。ブラウザネイティブで動作
 - Canvas 2D + WebAudio API（効果音もすべてコード生成）
-- ハイスコアは localStorage に保存
+- ハイスコア・実績・設定は localStorage に保存
+
+## ファイル構成
+
+役割ごとにファイルを分割しています（`index.html` が下記の順で読み込み、同一グローバルスコープを共有）。
+
+```
+index.html          … HTMLシェル（CSS + 各スクリプトを読み込むだけ）
+css/
+  style.css         … スタイル
+src/
+  setup.js          … キャンバス初期化
+  utils.js          … 数学ヘルパー・乱数・localStorageラッパ・フォント
+  config.js         … バランス調整用の定数（膨張・風・ボス・オーラ 等）
+  data.js           … データテーブル（パーク／市場イベント／実績／気分／称号／ニュース）
+  state.js          … ゲーム状態・エンティティ配列・背景の塵
+  audio.js          … WebAudio 効果音
+  input.js          … ポインタ／キーボード入力・共有／結果コピー
+  flow.js           … 開始・被弾・崩壊・フィーバー・ドラフト
+  boss.js           … ボス（ベア／タカ）のAIと攻撃
+  effects.js        … パーティクル放出・ポップアップ・ボタン描画の共通処理
+  spawn.js          … 敵・アイテムの出現ロジック
+  simulation.js     … メイン更新（simulate）とエンティティ更新
+  render.js         … 全描画（背景・風船・HUD・タイトル・リザルト 等）
+  main.js           … ゲームループとデバッグフック
+```
+
+デプロイは GitHub Actions（`.github/workflows/deploy.yml`）でリポジトリをそのまま GitHub Pages へ公開しています。
 
 ---
 
