@@ -6,6 +6,7 @@ function frame(now){
   let rdt = Math.min((now - last) / 1000, 0.05);
   last = now;
   tReal += rdt;
+  updateBgm(rdt);
 
   let gdt = rdt;
   if (state === 'play'){

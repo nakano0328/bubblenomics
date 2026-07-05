@@ -16,6 +16,7 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   keys.add(e.key);
   if (e.key === 'm' || e.key === 'M') muted = !muted;
+  if (e.key === 'b' || e.key === 'B') { opts.noBgm = !opts.noBgm; saveOpts(); }
   if (e.key === 'v' || e.key === 'V') { opts.noShake = !opts.noShake; saveOpts(); }
   if (e.key === 'p' || e.key === 'P') { if (state === 'play' && !draft) paused = !paused; }
   if (draft && ['1','2','3'].includes(e.key)) { chooseDraft(+e.key - 1); return; }
@@ -45,11 +46,26 @@ function onPress(){
     if (achView){ achView = false; return; }
     if (hit(titleBtns.ach)){ achView = true; beep(600, 0.08, 'triangle', 0.15); return; }
     if (hit(titleBtns.daily)){ startGame(true); ignoreVent = true; return; }
+    // スキン選択
+    for (let i = 0; i < skinBtns.length; i++){
+      if (hit(skinBtns[i])){
+        if (Object.keys(achUnlocked).length >= SKINS[i].need){
+          opts.skin = i; saveOpts();
+          beep(880, 0.08, 'sine', 0.15);
+        } else {
+          popup(ptr.x, ptr.y - 24, `🔒 実績${SKINS[i].need}個で解放`, '#ff8fa3', 14);
+        }
+        return;
+      }
+    }
     startGame(); ignoreVent = true;
   }
   else if (state === 'over'){
     if (hit(shareBtn)){ shareResult(); return; }
-    if (overT > 0.7){ startGame(); ignoreVent = true; }
+    if (overT > 0.7){
+      if (hit(retryBtn)){ startGame(isDaily); ignoreVent = true; return; }
+      gotoTitle();   // メニューボタン or それ以外のクリックはタイトルへ
+    }
   }
 }
 function shareResult(){

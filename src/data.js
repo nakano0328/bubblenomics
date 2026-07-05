@@ -93,8 +93,35 @@ function saveStats(){ store.set('bubblenomics_stats', lifeStats); }
 
 /* ---------- デイリー記録・設定 ---------- */
 let dailyRec = store.get('bubblenomics_daily', { date: '', best: 0 });
-let opts = store.get('bubblenomics_opts', { noShake: false });
+let opts = Object.assign({ noShake: false, noBgm: false, skin: 0 }, store.get('bubblenomics_opts', {}));
 function saveOpts(){ store.set('bubblenomics_opts', opts); }
+
+/* ---------- 風船スキン（実績数で解放） ---------- */
+const SKINS = [
+  { name: 'ピンク',   col: [255,126,182], need: 0 },
+  { name: 'ミント',   col: [126,231,135], need: 3 },
+  { name: 'ソーダ',   col: [110,231,255], need: 6 },
+  { name: 'ゴールド', col: [255,209,102], need: 10 },
+  { name: 'オニキス', col: [150,160,190], need: 14 },
+];
+function currentSkinIdx(){
+  const i = clamp(opts.skin | 0, 0, SKINS.length - 1);
+  return Object.keys(achUnlocked).length >= SKINS[i].need ? i : 0;
+}
+function currentSkin(){ return SKINS[currentSkinIdx()]; }
+
+/* ---------- 日替わり相場格言 ---------- */
+const QUOTES = [
+  '靴磨きの少年が相場を語り出したら、売り。',
+  '強気相場は悲観の中に生まれ、楽観の中で破裂する。',
+  '「今回は違う」——世界で最も高くつく5文字。',
+  '風船と恋は、膨らみすぎると戻れない。',
+  '利益はゆっくり、崩壊は一瞬。',
+  '天井で買い、底で売る。それが人間。',
+  '賢者は最初に買い、愚者は最後に買う。',
+  '落ちてくるナイフではなく、飛んでくるトゲを掴むな。',
+];
+function todayQuote(){ return QUOTES[Math.abs(seedOf(todayJST())) % QUOTES.length]; }
 
 const RANKS = [
   [0,      '🌱 養分',          '#9fb2c8'],

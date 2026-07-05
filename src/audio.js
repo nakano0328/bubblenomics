@@ -48,3 +48,43 @@ function sndFever(){ [523, 659, 784, 1046, 1318, 1568].forEach((f, i) => setTime
 function sndWarn(){ beep(1200, 0.08, 'square', 0.1); }
 function sndShield(){ beep(500, 0.25, 'triangle', 0.3, 300); }
 function sndBossHit(){ beep(180, 0.1, 'square', 0.2, -50); }
+
+/* ---------- BGM（プロシージャル・ステップシーケンサ） ----------
+   外部音源なし。タイトル＝静かなアンビエント、プレイ中＝軽快な
+   アルペジオ（レベルでテンポ加速）、ボス戦＝緊迫、フィーバー中は
+   既存のフィーバーアルペジオに主旋律を譲ってベースだけ残す。
+   Bキー（opts.noBgm）でBGMのみOFF可。乱数はデイリーのシードを
+   汚さないよう Math.random を直接使う。 */
+const BGM_CHORDS = [
+  [220.00, 261.63, 329.63],   // Am
+  [174.61, 220.00, 261.63],   // F
+  [130.81, 164.81, 196.00],   // C
+  [196.00, 246.94, 293.66],   // G
+];
+function updateBgm(rdt){
+  if (!AC || muted || opts.noBgm) return;
+  if (state === 'dying' || state === 'over' || paused) return;   // 崩壊後は静寂
+  bgmStepT -= rdt;
+  if (bgmStepT > 0) return;
+  const inBoss = state === 'play' && !!boss;
+  const stepDur = state === 'title' ? 0.30
+    : inBoss ? 0.16
+    : Math.max(0.17, 0.24 - level * 0.006);
+  bgmStepT += stepDur;
+  if (bgmStepT < -0.5) bgmStepT = stepDur;   // タブ復帰時の追いつき連打を防ぐ
+  const chord = BGM_CHORDS[(bgmStep >> 3) % BGM_CHORDS.length];
+  const s = bgmStep & 7;
+  // ベース（小節の1・5歩目）
+  if (s === 0 || s === 4) beep(chord[0] / 2, 0.30, 'triangle', 0.07);
+  // リード
+  if (state === 'title'){
+    if (s === 0 || s === 5) beep(chord[(bgmStep >> 3) % 3] * 2, 0.5, 'sine', 0.035);
+  } else if (inBoss){
+    beep(chord[s % 3] * (s % 2 ? 1 : 2), 0.10, 'square', 0.028);
+    if (s === 6) beep(chord[2] * 2 * 1.06, 0.12, 'sawtooth', 0.03);   // 半音上の不穏な音
+  } else if (!feverOn){
+    if (s % 2 === 0) beep(chord[(s >> 1) % 3] * 2, 0.16, 'sine', 0.04);
+    if (s === 7 && Math.random() < 0.4) beep(chord[1] * 4, 0.1, 'sine', 0.02);
+  }
+  bgmStep++;
+}

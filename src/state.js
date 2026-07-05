@@ -23,6 +23,9 @@ let mkt = null, mktT = 16;
 let draft = null;
 let mood = MOODS[0], isDaily = false;
 let titleBtns = {}, achView = false, shareBtn = null, shareMsgT = 0, titleAmbT = 1;
+let retryBtn = null, menuBtn = null, skinBtns = [];
+// BGMシーケンサ
+let bgmStepT = 0, bgmStep = 0;
 best = +store.get('bubblenomics_best', 0) || 0;
 
 const B = { x: 0, y: 0, vx: 0, vy: 0, r: START_R, jetDir: {x:0,y:1} };

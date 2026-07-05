@@ -204,7 +204,7 @@ function drawBoss(){
 }
 function drawBalloon(){
   const t = clamp((B.r - MINR) / (MAXR - MINR), 0, 1);
-  let col = t < 0.55 ? lerpC(PINK, GOLD, t / 0.55) : lerpC(GOLD, RED, (t - 0.55) / 0.45);
+  let col = t < 0.55 ? lerpC(currentSkin().col, GOLD, t / 0.55) : lerpC(GOLD, RED, (t - 0.55) / 0.45);
   if (feverOn) col = hsl2rgb((tReal * 140) % 360, 0.75, 0.66);
   const warning = B.r > MAXR * 0.85;
   const sp = Math.min(Math.hypot(B.vx, B.vy) / 700, 0.22);
@@ -276,7 +276,9 @@ function drawBalloon(){
       ctx.stroke();
       ctx.restore();
     } else {
-      ctx.beginPath(); ctx.arc(ex + lx * er * 0.7, ey + ly * er * 0.7, er, 0, TAU); ctx.fill();
+      // 約3.7秒ごとにまばたき
+      const blink = (tReal % 3.7) < 0.13 ? 0.15 : 1;
+      ctx.beginPath(); ctx.ellipse(ex + lx * er * 0.7, ey + ly * er * 0.7, er, er * blink, 0, 0, TAU); ctx.fill();
     }
   }
   ctx.strokeStyle = '#2b1b3a'; ctx.lineWidth = Math.max(B.r * 0.04, 1.8); ctx.lineCap = 'round';
@@ -540,6 +542,11 @@ function drawTitle(){
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.fillText('〜バブルは、はじける直前がいちばん儲かる〜', W / 2, H * 0.14 + ts * 0.85);
 
+  // 日替わり相場格言
+  ctx.font = `italic 500 ${Math.min(W * 0.024, 13)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText(`“${todayQuote()}”`, W / 2, H * 0.235);
+
   ctx.font = F(Math.min(W * 0.027, 15.5), '600');
   const lines = [
     '🎈 ふくらむほど資産が サイズ² で爆増。触れたら崩壊、ふくらみ切っても崩壊',
@@ -561,14 +568,39 @@ function drawTitle(){
   pillBtn(titleBtns.daily, '📅 本日の相場', todayBest);
   pillBtn(titleBtns.ach, `🏆 実績 ${Object.keys(achUnlocked).length}/${ACHS.length}`, 'タップで一覧');
 
+  // 風船スキン（実績数で解放）
+  skinBtns = [];
+  const sw = 26, sgap = 10;
+  const stotal = SKINS.length * sw + (SKINS.length - 1) * sgap;
+  const sx0 = W / 2 - stotal / 2, sy0 = H * 0.808;
+  const achN = Object.keys(achUnlocked).length;
+  SKINS.forEach((sk, i) => {
+    const x = sx0 + i * (sw + sgap);
+    skinBtns.push({ x, y: sy0, w: sw, h: sw });
+    const unlocked = achN >= sk.need;
+    ctx.globalAlpha = unlocked ? 1 : 0.3;
+    ctx.fillStyle = rgb(sk.col);
+    ctx.beginPath(); ctx.arc(x + sw / 2, sy0 + sw / 2, sw / 2 - 2, 0, TAU); ctx.fill();
+    if (unlocked && currentSkinIdx() === i){
+      ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x + sw / 2, sy0 + sw / 2, sw / 2 + 1.5, 0, TAU); ctx.stroke();
+    }
+    if (!unlocked){
+      ctx.globalAlpha = 0.85;
+      ctx.font = `11px ${EMOJI}`;
+      ctx.fillText('🔒', x + sw / 2, sy0 + sw / 2);
+    }
+    ctx.globalAlpha = 1;
+  });
+
   ctx.globalAlpha = 0.7 + Math.sin(tReal * 4) * 0.3;
   ctx.font = F(Math.min(W * 0.04, 22));
   ctx.fillStyle = '#ffe08a';
-  ctx.fillText('クリック / タップ で開場', W / 2, H * 0.86);
+  ctx.fillText('クリック / タップ で開場', W / 2, H * 0.87);
   ctx.globalAlpha = 1;
   ctx.font = F(12, '500');
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.fillText('マウス or WASD/矢印キー ／ M:ミュート P:ポーズ V:振動' + (opts.noShake ? 'ON' : 'OFF'), W / 2, H * 0.9);
+  ctx.fillText('マウス or WASD/矢印キー ／ M:ミュート B:BGM P:ポーズ V:振動', W / 2, H * 0.905);
   if (best > 0){
     ctx.fillStyle = 'rgba(255,224,138,0.8)';
     ctx.font = F(14, '600');
@@ -665,22 +697,24 @@ function drawOver(){
   }
 
   if (overT > 0.7){
-    ctx.globalAlpha = 0.7 + Math.sin(tReal * 4) * 0.3;
-    ctx.font = F(20);
-    ctx.fillStyle = '#ffe08a';
-    ctx.fillText('クリックで 再上場 🔔', W / 2, py + 318);
-    ctx.globalAlpha = 1;
+    // 再上場 ／ メニューへ
+    const bw2 = 128, bh2 = 36, gap2 = 12;
+    retryBtn = { x: W / 2 - bw2 - gap2 / 2, y: py + 302, w: bw2, h: bh2 };
+    menuBtn  = { x: W / 2 + gap2 / 2,       y: py + 302, w: bw2, h: bh2 };
+    pillBtn(retryBtn, `🔁 再上場${isDaily ? '（本日）' : ''}`);
+    pillBtn(menuBtn, '🏠 メニュー', null,
+      { fg: 'rgba(255,255,255,0.85)', border: 'rgba(255,255,255,0.35)' });
     // シェアボタン
     const sbw = 200, sbh = 34;
-    shareBtn = { x: W / 2 - sbw / 2, y: py + 344, w: sbw, h: sbh };
+    shareBtn = { x: W / 2 - sbw / 2, y: py + 348, w: sbw, h: sbh };
     pillBtn(shareBtn, '📋 結果をコピー', null,
       { bg: 'rgba(20,10,40,0.85)', border: 'rgba(110,231,255,0.55)', fg: '#6ee7ff' });
     if (shareMsgT !== 0){
       ctx.font = F(12, '600');
       ctx.fillStyle = shareMsgT > 0 ? '#7ee787' : '#ff8fa3';
-      ctx.fillText(shareMsgT > 0 ? 'コピーしました！SNSでシェアしよう🎈' : 'コピーできませんでした…', W / 2, shareBtn.y + sbh + 16);
+      ctx.fillText(shareMsgT > 0 ? 'コピーしました！SNSでシェアしよう🎈' : 'コピーできませんでした…', W / 2, shareBtn.y + sbh + 15);
     }
   } else {
-    shareBtn = null;
+    shareBtn = null; retryBtn = null; menuBtn = null;
   }
 }

@@ -24,6 +24,16 @@ function startGame(daily){
   bannerT = 3.2;
   if (isDaily) unlock('daily1');
 }
+// リザルトからタイトルへ戻る（走っていた演出・敵は掃除、賑やかし用のトゲとコインは残す）
+function gotoTitle(){
+  state = 'title';
+  boss = null; draft = null; pendingBoss = false;
+  bombs = []; vortices = []; lasers = [];
+  feverOn = false; fever = 0;
+  paused = false; achView = false; shareMsgT = 0;
+  if (ventGain && AC) ventGain.gain.setTargetAtTime(0, AC.currentTime, 0.02);
+}
+function vibrate(pat){ try { if (navigator.vibrate) navigator.vibrate(pat); } catch(e){} }
 function hitHazard(reason){
   if (invulnT > 0) return;
   if (barrier > 0){
@@ -31,6 +41,7 @@ function hitHazard(reason){
     invulnT = 1.3;
     shake = Math.max(shake, 14);
     sndShield();
+    vibrate(40);
     unlock('insured');
     if (ghostPerk) addFever(0.5);
     popup(B.x, B.y - B.r - 26, '🛡️ 保険発動！', '#6ee7ff', 22);
@@ -58,6 +69,7 @@ function die(reason){
   if (state !== 'play') return;
   state = 'dying'; dyingT = 0; deathReason = reason;
   shake = 24; sndPop();
+  vibrate([60, 40, 120]);
   lifeStats.plays++; lifeStats.earned += Math.floor(score); saveStats();
   unlock('pop1');
   if (reason.startsWith('過熱')) unlock('overheat');
