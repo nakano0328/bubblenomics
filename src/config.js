@@ -22,6 +22,9 @@ const BOSS_BODY_R = 40;            // 体当たり判定
 const BOSS_HIT_R = 52;             // 誘導弾の命中判定
 // 保険
 const SHOCK_R = 210;               // 保険発動時の衝撃波半径
+// ピックアップ
+const GILD_DUR = 4;                // 🎖️金箔コーティングの無敵秒数
+const DECREE_FINE = 15;            // 📜規制通達のトゲ1本あたり没収金（×倍率）
 const inflationRate = lv => Math.min(7 + (lv - 1) * 1.1, 16);
 const multOf = r => (r / MINR) * (r / MINR);
 

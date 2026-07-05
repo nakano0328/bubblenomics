@@ -78,12 +78,6 @@ function spawnLaser(){
   popup(vertical ? clamp(B.x, 60, W - 60) : W / 2, vertical ? 60 : clamp(B.y, 40, H - 40), '⚠ 監視ビーム！', '#ff8fa3', 16);
   beep(980, 0.3, 'sawtooth', 0.1);
 }
-function spawnCoin(){
-  const cap = (mkt && mkt.id === 'boom') ? 8 : 4;
-  if (coins.length >= cap) return;
-  const gem = level >= 2 && rng() < 0.10;   // 10%で💎（高額・短命）
-  coins.push({ x: R(W * 0.15, W * 0.85), y: R(H * 0.18, H * 0.82), t: 0, life: gem ? 6 : 9, ph: R(0, TAU), gem });
-}
 function spawnWave(){
   if (needles.length > 110) return;
   const opts = [['drift', 3]];

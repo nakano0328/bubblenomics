@@ -58,26 +58,6 @@ function drawBomb(bm){
   }
   ctx.restore();
 }
-function drawCoin(c){
-  const bobY = Math.sin(c.t * 3 + c.ph) * 5;
-  const blink = c.life - c.t < 2 ? (Math.sin(c.t * 14) > 0 ? 1 : 0.25) : 1;
-  ctx.save();
-  ctx.translate(c.x, c.y + bobY);
-  ctx.globalAlpha = blink;
-  const glow = c.gem ? 'rgba(155,236,255,' : 'rgba(255,220,120,';
-  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, c.gem ? 36 : 30);
-  g.addColorStop(0, glow + (c.gem ? '0.6)' : '0.5)'));
-  g.addColorStop(1, glow + '0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(0, 0, c.gem ? 36 : 30, 0, TAU); ctx.fill();
-  let sx = Math.sin(c.t * (c.gem ? 5 : 3.2) + c.ph);
-  sx = Math.sign(sx || 1) * Math.max(Math.abs(sx), 0.18);
-  ctx.scale(sx, 1);
-  ctx.font = `${c.gem ? 26 : 28}px ${EMOJI}`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(c.gem ? '💎' : '🪙', 0, 0);
-  ctx.restore();
-}
 function drawVortex(v){
   const fadeIn = clamp(v.t / 0.5, 0, 1);
   const fadeOut = clamp((v.life - v.t) / 1, 0, 1);
@@ -206,6 +186,7 @@ function drawBalloon(){
   const t = clamp((B.r - MINR) / (MAXR - MINR), 0, 1);
   let col = t < 0.55 ? lerpC(currentSkin().col, GOLD, t / 0.55) : lerpC(GOLD, RED, (t - 0.55) / 0.45);
   if (feverOn) col = hsl2rgb((tReal * 140) % 360, 0.75, 0.66);
+  else if (gildT > 0) col = lerpC(GOLD, [255, 244, 200], 0.5 + Math.sin(tReal * 12) * 0.4);   // 金箔シマー
   const warning = B.r > MAXR * 0.85;
   const sp = Math.min(Math.hypot(B.vx, B.vy) / 700, 0.22);
   const ang = Math.atan2(B.vy, B.vx);
@@ -213,7 +194,7 @@ function drawBalloon(){
 
   ctx.save();
   ctx.translate(B.x, B.y);
-  if (invulnT > 0) ctx.globalAlpha = 0.55 + Math.sin(tReal * 30) * 0.3;
+  if (invulnT > 0 && gildT <= 0) ctx.globalAlpha = 0.55 + Math.sin(tReal * 30) * 0.3;   // 金箔中は点滅させない
 
   // グレイズ判定リング
   ctx.save();
@@ -328,6 +309,23 @@ function drawParts(){
     ctx.globalAlpha = a;
     ctx.strokeStyle = r0.c; ctx.lineWidth = r0.w * a + 0.5;
     ctx.beginPath(); ctx.arc(r0.x, r0.y, Math.max(r0.r, 0.1), 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 画面外から向かってくるトゲの入場予告マーカー（端で点滅する矢印）
+function drawEdgeWarnings(){
+  for (const n of needles){
+    if (n.blown || n.age > 1.2) continue;
+    if (n.x >= -10 && n.x <= W + 10 && n.y >= -10 && n.y <= H + 10) continue;
+    const ex = clamp(n.x, 12, W - 12), ey = clamp(n.y, 12, H - 12);
+    ctx.globalAlpha = (0.35 + Math.abs(Math.sin(tReal * 10)) * 0.45) * (1 - n.age / 1.2);
+    ctx.fillStyle = '#ff5f7a';
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(Math.atan2(n.vy || 0, n.vx));
+    ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-5, 5.5); ctx.lineTo(-5, -5.5); ctx.closePath(); ctx.fill();
+    ctx.restore();
   }
   ctx.globalAlpha = 1;
 }

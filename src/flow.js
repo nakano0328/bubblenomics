@@ -10,13 +10,13 @@ function startGame(daily){
   shake = 0; bannerT = 0; tipIdx = 0; wasRecord = false;
   grazeBonus = 0; ventEff = 1; coinMul = 1; inflMul = 1; thrustMul = 1; magnetR = 150; barrier = 0;
   compoundRate = 0; greedFire = false; ghostPerk = false;
-  perkCounts = {}; invulnT = 0; windBlown = 0; achCheckT = 0; recordFxDone = false;
+  perkCounts = {}; invulnT = 0; gildT = 0; windBlown = 0; achCheckT = 0; recordFxDone = false; bestPassed = false;
   fever = 0; feverOn = false; feverT = 0; feverCount = 0;
   boss = null; bossCount = 0; bossKills = 0; pendingBoss = false;
   mkt = null; mktT = 16; draft = null;
   runUnlocks = []; tickerStr = ''; pendingNews = [];
   B.x = W / 2; B.y = H / 2; B.vx = 0; B.vy = 0; B.r = START_R;
-  needles = []; bombs = []; coins = []; parts = []; rings = []; popups = [];
+  needles = []; bombs = []; pickups = []; parts = []; rings = []; popups = [];
   vortices = []; lasers = [];
   overlayView = null; shareMsgT = 0;
   mood = MOODS[Math.floor(rng() * MOODS.length)];

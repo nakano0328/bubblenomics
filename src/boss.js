@@ -35,7 +35,7 @@ function defeatBoss(){
   rings.push({ x: boss.x, y: boss.y, r: 20, vr: 900, t: 0, life: 0.5, c: '#ffd166', w: 6 });
   // 撃破報酬：コインの雨
   for (let i = 0; i < 8; i++){
-    coins.push({ x: clamp(boss.x + R(-140, 140), 40, W - 40), y: clamp(boss.y + R(-100, 100), 60, H - 40), t: 0, life: 11, ph: R(0, TAU) });
+    pickups.push({ type: 'coin', x: clamp(boss.x + R(-140, 140), 40, W - 40), y: clamp(boss.y + R(-100, 100), 60, H - 40), t: 0, life: 11, ph: R(0, TAU) });
   }
   boss = null;
 }

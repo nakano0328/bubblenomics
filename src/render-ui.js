@@ -26,8 +26,8 @@ function drawHUD(){
   ctx.fillStyle = feverOn ? rgb(hsl2rgb((tReal * 200) % 360, 0.9, 0.7)) : '#ffe08a';
   ctx.fillText(yen(score), 18, 58);
   ctx.font = F(12, '500');
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.fillText('歴代最高 ' + yen(Math.max(best, score)), 18, 76);
+  ctx.fillStyle = bestPassed ? `rgba(255,224,138,${0.7 + Math.sin(tReal * 6) * 0.3})` : 'rgba(255,255,255,0.45)';
+  ctx.fillText((bestPassed ? '🚀 ' : '歴代最高 ') + yen(Math.max(best, score)), 18, 76);
   const nr = nextRankOf(score);
   if (nr){
     ctx.font = F(11, '500');

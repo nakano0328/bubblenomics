@@ -3,6 +3,7 @@
 function simulate(gdt){
   elapsed += gdt;
   invulnT = Math.max(0, invulnT - gdt);
+  gildT = Math.max(0, gildT - gdt);
 
   // ---- 四半期（レベル）進行 ----
   const newLevel = 1 + Math.floor(elapsed / QUARTER_SEC);
@@ -124,6 +125,18 @@ function simulate(gdt){
          * (mood.id === 'panic' ? 1.25 : 1)
          * (mkt && mkt.id === 'easing' ? 1.5 : 1) * gdt;
   if (compoundRate > 0) score += score * compoundRate * gdt;   // 複利経営
+  if (!bestPassed && best > 0 && score > best){
+    bestPassed = true;
+    bannerTxt = '🚀 歴代最高を突破！ここからは全部が新記録！';
+    bannerT = 3.0;
+    pushNews('無名の風船、歴代最高資産を更新中');
+    sndLevel();
+  }
+  if (gildT > 0 && rng() < 0.5){   // 金箔の煌めき
+    const ga = R(0, TAU);
+    emit(1, B.x + Math.cos(ga) * B.r, B.y + Math.sin(ga) * B.r,
+      { spd: [10, 60], vy: -30, drag: 1, sz: [1.5, 3], c: '#ffe680', life: [0.4, 0.7] });
+  }
   achCheckT -= gdt;
   if (achCheckT <= 0){
     achCheckT = 0.5;
@@ -158,7 +171,7 @@ function simulate(gdt){
   }
   coinT -= gdt;
   if (coinT <= 0){
-    spawnCoin();
+    spawnPickup();
     coinT = ((mkt && mkt.id === 'boom') ? R(0.5, 1.0) : R(3, 4.5)) * (mood.id === 'bull' ? 0.66 : 1);
   }
 
@@ -167,7 +180,7 @@ function simulate(gdt){
   if (!updateBombs(gdt)) return;
   updateVortices(gdt);
   if (!updateLasers(gdt)) return;
-  updateCoins(gdt, mult);
+  updatePickups(gdt, mult);
 }
 
 /* ---------- エンティティ更新 ---------- */
@@ -311,28 +324,6 @@ function updateLasers(gdt){
     }
   }
   return true;
-}
-function updateCoins(gdt, mult){
-  for (let i = coins.length - 1; i >= 0; i--){
-    const c = coins[i];
-    c.t += gdt;
-    const dx = B.x - c.x, dy = B.y - c.y, d = Math.hypot(dx, dy);
-    if (d < magnetR && d > 1){ c.x += dx / d * 130 * gdt; c.y += dy / d * 130 * gdt; }
-    if (d < B.r + 18){
-      const base = c.gem ? 2000 : 400;
-      const bonus = Math.floor(base * mult * coinMul * (feverOn ? 2 : 1));
-      score += bonus;
-      addFever(c.gem ? 0.25 : 0.08);
-      if (c.gem){ unlock('gem1'); shake = Math.max(shake, 5); }
-      popup(c.x, c.y - 10, c.gem ? `+${yen(bonus).slice(1)} 時価総額💎` : `+${yen(bonus).slice(1)} 配当💰`, c.gem ? '#9becff' : '#ffe08a', c.gem ? 22 : 18);
-      sndCoin();
-      if (c.gem) beep(1760, 0.25, 'sine', 0.2);
-      emit(c.gem ? 18 : 10, c.x, c.y, { spd: [40, c.gem ? 260 : 180], vy: -40, g: 240, drag: 1.5,
-        vr: 6, sz: [2, 4], c: c.gem ? '#9becff' : '#ffd166', life: [0.6, 0.6], shape: 'rect' });
-      coins.splice(i, 1); continue;
-    }
-    if (c.t > c.life){ coins.splice(i, 1); }
-  }
 }
 
 function updateFx(gdt){

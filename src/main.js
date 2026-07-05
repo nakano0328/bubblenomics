@@ -54,7 +54,7 @@ function frame(now){
     if (titleAmbT <= 0){
       titleAmbT = R(0.9, 1.8);
       if (needles.length < 12) spawnDrift();
-      if (rng() < 0.2 && coins.length < 3) spawnCoin();
+      if (rng() < 0.2 && pickups.length < 3) spawnPickup('coin');
     }
     for (let i = needles.length - 1; i >= 0; i--){
       const n = needles[i];
@@ -63,9 +63,9 @@ function frame(now){
       n.rot = Math.atan2(n.vy || 0, n.vx);
       if (n.age > 0.5 && (n.x < -100 || n.x > W + 100 || n.y < -100 || n.y > H + 100)) needles.splice(i, 1);
     }
-    for (let i = coins.length - 1; i >= 0; i--){
-      coins[i].t += rdt;
-      if (coins[i].t > coins[i].life) coins.splice(i, 1);
+    for (let i = pickups.length - 1; i >= 0; i--){
+      pickups[i].t += rdt;
+      if (pickups[i].t > pickups[i].life) pickups.splice(i, 1);
     }
   }
 
@@ -75,9 +75,10 @@ function frame(now){
 
   drawBG();
   for (const v of vortices) drawVortex(v);
-  for (const c of coins) drawCoin(c);
+  for (const p of pickups) drawPickup(p);
   for (const bm of bombs) drawBomb(bm);
   for (const n of needles) drawNeedle(n);
+  drawEdgeWarnings();
   if (boss) drawBoss();
   if (state === 'play') drawBalloon();
   for (const L of lasers) drawLaser(L);
@@ -150,7 +151,8 @@ window.GAME = {
   get isDailyRun(){ return isDaily; },
   toggleAch(){ if (state === 'title') overlayView = overlayView === 'ach' ? null : 'ach'; },
   share(){ if (state === 'over') shareResult(); },
-  forceGem(){ if (state === 'play') coins.push({ x: W / 2, y: H * 0.4, t: 0, life: 6, ph: 0, gem: true }); },
+  forcePickup(type){ if (state === 'play') pickups.push({ type, x: W / 2, y: H * 0.4, t: 0, life: 6, ph: 0 }); },
+  forceGem(){ this.forcePickup('gem'); },
   get achCount(){ return Object.keys(achUnlocked).length; },
   get vortexCount(){ return vortices.length; },
   get laserCount(){ return lasers.length; },

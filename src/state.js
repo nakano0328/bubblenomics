@@ -26,10 +26,12 @@ let titleBtns = {}, overlayView = null /* null | 'ach' | 'help' */, shareBtn = n
 let retryBtn = null, menuBtn = null, skinBtns = [];
 // BGMシーケンサ
 let bgmStepT = 0, bgmStep = 0;
+// 金箔コーティング残り時間／自己ベスト突破フラグ
+let gildT = 0, bestPassed = false;
 best = +store.get('bubblenomics_best', 0) || 0;
 
 const B = { x: 0, y: 0, vx: 0, vy: 0, r: START_R, jetDir: {x:0,y:1} };
-let needles = [], bombs = [], coins = [], parts = [], rings = [], popups = [];
+let needles = [], bombs = [], pickups = [], parts = [], rings = [], popups = [];
 const tips = [
   { at: 0.4, txt: '長押し：空気を噴射してカーソルの方へ！' },
   { at: 3.2, txt: '離すと ふくらんで資産が増える…でも当たり判定も💦' },
